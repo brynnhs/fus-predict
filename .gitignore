@@ -1,0 +1,10 @@
+/data/sourcedata/gus
+/data
+/derivatives
+*.toml
+
+requirements.txt
+/requirements
+src/fuspredict.egg-info/dependency_links.txt
+/src/fuspredict.egg-info
+*__pycache__
