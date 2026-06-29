@@ -26,6 +26,7 @@ import xarray as xr
 from .io import (
     STAGE_REORIENTED_RESIZED,
     derive_session_id_from_path,
+    sanitize_attrs,
 )
 
 STAGE_TISSUE_MASK = "tissue_mask"
@@ -209,7 +210,7 @@ def segment_all_sessions(
                 "cv_map":          xr.DataArray(result["cv_map"],          dims=["x", "y"]),
             },
             coords={"x": x_coords, "y": y_coords},
-            attrs={
+            attrs=sanitize_attrs({
                 "stage":                        STAGE_TISSUE_MASK,
                 "session_id":                   session_id,
                 "input_stage":                  stage_in,
@@ -223,7 +224,7 @@ def segment_all_sessions(
                 "method":                       result["method"],
                 "frame_rate":                   da.attrs.get("frame_rate", 2.5),
                 "source_fus_file":              da.attrs.get("source_fus_file", ""),
-            },
+            }),
         )
         ds.to_netcdf(out_path)
         outputs.append(str(out_path))

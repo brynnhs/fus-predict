@@ -9,6 +9,7 @@ import xarray as xr
 from .io import (
     STAGE_REORIENTED_RESIZED,
     derive_session_id_from_path,
+    sanitize_attrs,
 )
 
 
@@ -224,8 +225,8 @@ def reorient_baseline_sessions(
             target_size=target_size,
         )
 
-        attrs = da.attrs.copy()
-        attrs.update({
+        attrs = sanitize_attrs({
+            **da.attrs,
             "session_id":  session_id,
             "stage":       STAGE_REORIENTED_RESIZED,
             "rotate_k":    rotate_k,
