@@ -11,10 +11,13 @@ from fuspredict.preprocessing.tissue_masks import segment_all_sessions
 from fuspredict.project import find_repo_root, load_project_config
 
 
-def list_nc(directory: Path) -> list[str]:
+def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
     # Glob all .nc outputs rather than using each stage's return value, which
     # only includes files written in the current run (empty when overwrite=False)
-    return sorted(str(p) for p in Path(directory).glob("*.nc"))
+    paths = sorted(str(p) for p in Path(directory).glob("*.nc"))
+    if exclude_ids:
+        paths = [p for p in paths if not any(sid in Path(p).stem for sid in exclude_ids)]
+    return paths
 
 
 def main():
@@ -40,7 +43,8 @@ def main():
     for subject in subjects:
         subj_deriv  = deriv_root / subject
         subj_source = source_root / subject
-        flip_ids    = set(geo_cfg["flip_session_ids_by_subject"].get(subject, []))
+        flip_ids     = set(geo_cfg["flip_session_ids_by_subject"].get(subject, []))
+        exclude_ids  = set(config["subjects"].get("sessions_to_exclude", {}).get(subject, []))
 
         print(f"\n=== Processing subject {subject} ===")
 
@@ -53,7 +57,7 @@ def main():
             apply_log10=APPLY_LOG10,
             log10_eps=base_cfg["log10_eps"],
         )
-        baseline_paths = list_nc(baseline_dir)
+        baseline_paths = list_nc(baseline_dir, exclude_ids)
         print(f"  Baseline sessions: {len(baseline_paths)}")
 
         # Stage 1b — Task (non-baseline) extraction and optional log10 transform
@@ -66,7 +70,7 @@ def main():
                 apply_log10=APPLY_LOG10,
                 log10_eps=base_cfg["log10_eps"],
             )
-            task_paths = list_nc(task_dir)
+            task_paths = list_nc(task_dir, exclude_ids)
             print(f"  Task sessions: {len(task_paths)}")
 
             task_reoriented_dir = subj_deriv / f"task_only_reoriented_resized{dir_suffix}"
