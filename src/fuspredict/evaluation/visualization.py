@@ -23,7 +23,7 @@ import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
-from fuspredict.evaluation.stats import significance_stars
+from fuspredict.evaluation.stats import _aligned, rmse, significance_stars
 
 matplotlib.use("Agg")
 
@@ -97,28 +97,6 @@ def _iqr_ylim(
     lo, hi = q25 - iqr_scale * iqr, q75 + iqr_scale * iqr
     span = hi - lo
     return lo - margin * span, hi + margin * span
-
-
-def _aligned(
-    df: pd.DataFrame, models: list[str], horizon: int, rmse_col: str = "rmse_full"
-) -> pd.DataFrame:
-    """Return a wide DataFrame indexed by session_id, one column per model.
-
-    Only includes models with non-NaN values for ``rmse_col``, and only
-    sessions where all included models have values.
-    """
-    parts = []
-    for m in models:
-        s = (
-            df[(df["model"] == m) & (df["horizon"] == horizon)]
-            .set_index("session_id")[rmse_col]
-            .rename(m)
-        )
-        if s.notna().any():
-            parts.append(s)
-    if not parts:
-        return pd.DataFrame()
-    return pd.concat(parts, axis=1).dropna()
 
 
 def _rolling(x: np.ndarray, win: int = 5) -> np.ndarray:
@@ -557,8 +535,8 @@ def plot_spatial_comparison(
         ``{model_name: (gt, pred)}``, each array shape ``(N, H, W)``, as
         returned by :func:`load_predictions`.
     session_id : str
-        Session identifier, used only for context (not currently
-        rendered, kept for API symmetry / future captioning).
+        Session identifier. Not rendered in the figure; accepted for a
+        consistent call signature with the other spatial-figure functions.
     out_path : Path
         Output PDF path.
     """
@@ -637,7 +615,7 @@ def plot_spatial_rmse_diff(
         return
 
     ref_gt = predictions[models[0]][0].astype(np.float64)
-    rmse_zero = np.sqrt(np.mean(ref_gt ** 2, axis=0))
+    rmse_zero = rmse(ref_gt, np.zeros_like(ref_gt), axis=0)
 
     diffs, err_lims = [], []
     for m in models:
@@ -645,7 +623,7 @@ def plot_spatial_rmse_diff(
         gt = gt.astype(np.float64)
         pred = pred.astype(np.float64)
         n = min(gt.shape[0], pred.shape[0])
-        diff = np.sqrt(np.mean((pred[:n] - gt[:n]) ** 2, axis=0)) - rmse_zero
+        diff = rmse(pred[:n], gt[:n], axis=0) - rmse_zero
         diffs.append(diff)
         err_lims.append(float(np.percentile(np.abs(diff), 98)))
 
@@ -704,7 +682,7 @@ def plot_rmse_vs_time(
     fig, ax = plt.subplots(figsize=(FIG_W_DOUBLE, 3.0), constrained_layout=True)
 
     ref_gt = predictions[models[0]][0].astype(np.float64)[:min_t]
-    rmse_z = np.sqrt(np.mean(ref_gt ** 2, axis=(1, 2)))
+    rmse_z = rmse(ref_gt, np.zeros_like(ref_gt), axis=(1, 2))
     ax.plot(t, _rolling(rmse_z), lw=1.2, color=COLORS["zero"], ls=":", label=LABELS["zero"])
 
     lw_map = {"convlstm": 2.0}
@@ -712,7 +690,7 @@ def plot_rmse_vs_time(
         gt, pred = predictions[m]
         gt = gt.astype(np.float64)[:min_t]
         pred = pred.astype(np.float64)[:min_t]
-        rmse_m = np.sqrt(np.mean((pred - gt) ** 2, axis=(1, 2)))
+        rmse_m = rmse(pred, gt, axis=(1, 2))
         ax.plot(
             t, _rolling(rmse_m),
             lw=lw_map.get(m, 1.6),
