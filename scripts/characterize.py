@@ -928,7 +928,7 @@ def main() -> None:
     pa.setdefault('acf_patch_sizes',             arcfg.get('acf_patch_sizes', [5, 10, 15, 20, 25, 30]))
     pa.setdefault('patch_lag_pca_ar_patch_size', arcfg.get('patch_lag_pca_ar_patch_size', 15))
 
-    EXCLUDED_SESSIONS = {'Se27072020', 'Se31012020'}
+    EXCLUDED_SESSIONS = set(arcfg.get('within_session_exclude', []))
 
     preproc_root     = repo_root / config['paths']['preprocessing']
     standardized_dir = preproc_root / 'secundo' / 'baseline_only_standardized'
