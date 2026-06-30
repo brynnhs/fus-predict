@@ -16,6 +16,30 @@ import pandas as pd
 from scipy import stats as scipy_stats
 
 
+def rmse(
+    preds: np.ndarray, targets: np.ndarray, axis: int | tuple[int, ...] | None = None
+) -> np.ndarray | float:
+    """Root-mean-squared error between predictions and targets.
+
+    Parameters
+    ----------
+    preds, targets : np.ndarray
+        Arrays of identical shape.
+    axis : int, tuple of int, or None
+        Axis (or axes) to reduce over. ``None`` (default) reduces over all
+        axes and returns a scalar; e.g. ``axis=0`` collapses a stack of
+        frames into a per-pixel RMSE map, ``axis=(1, 2)`` collapses spatial
+        axes into a per-frame RMSE trace.
+
+    Returns
+    -------
+    np.ndarray or float
+        RMSE reduced over ``axis``.
+    """
+    diff = preds.astype(np.float64) - targets.astype(np.float64)
+    return np.sqrt(np.mean(diff ** 2, axis=axis))
+
+
 def wilcoxon_test(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
     """Paired Wilcoxon signed-rank test between two equal-length samples.
 
