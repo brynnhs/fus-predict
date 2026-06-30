@@ -108,7 +108,6 @@ def parse_args(default_session_id: str) -> argparse.Namespace:
 
 def generate_scalar_figures(
     per_session_df: pd.DataFrame,
-    aggregate_df: pd.DataFrame,
     models: list[str],
     horizons: list[int],
     out_dir: Path,
@@ -121,8 +120,6 @@ def generate_scalar_figures(
     ----------
     per_session_df : pd.DataFrame
         Long-form per-session results.
-    aggregate_df : pd.DataFrame
-        Per-(model, horizon) aggregate summary.
     models : list of str
         All model names present in the data, in display order.
     horizons : list of int
@@ -310,7 +307,6 @@ def main() -> None:
 
     print(f"Loading results from {results_dir} ...")
     per_session_df = pd.read_csv(results_path)
-    aggregate_df = pd.read_csv(aggregate_path)
 
     if per_session_df.empty:
         raise RuntimeError(f"{results_path} is empty; nothing to report.")
@@ -323,7 +319,7 @@ def main() -> None:
 
     written: list[Path] = []
 
-    generate_scalar_figures(per_session_df, aggregate_df, models, horizons, out_dir, written)
+    generate_scalar_figures(per_session_df, models, horizons, out_dir, written)
     generate_wilcoxon(per_session_df, models, horizons, out_dir, written)
 
     if not args.skip_spatial:
