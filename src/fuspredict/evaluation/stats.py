@@ -9,6 +9,8 @@ DataFrames. Nothing here plots, performs I/O, or loads config.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
@@ -212,3 +214,73 @@ def compute_wilcoxon(
                 )
 
     return pd.DataFrame(rows)
+
+
+def residual_acf_latent(residual_latents: np.ndarray, max_lag: int) -> dict:
+    """Compute per-component ACF of residuals in latent (e.g. PCA) space.
+
+    Parameters
+    ----------
+    residual_latents : np.ndarray, shape (T, d)
+        Residual time series for each of ``d`` latent components.
+    max_lag : int
+        Maximum lag to compute, in ``[0, T - 1]``.
+
+    Returns
+    -------
+    dict
+        ``acf``: ``(d, max_lag + 1)`` array of per-component autocorrelation.
+        ``mean_abs_acf_by_lag``: ``(max_lag + 1,)`` mean absolute ACF across
+        components, useful as a single residual-whiteness summary per lag.
+    """
+    x = np.asarray(residual_latents)
+    if x.ndim != 2:
+        raise ValueError("residual_latents must be (T, d)")
+    T, d = x.shape
+    max_lag = int(max_lag)
+    if not (0 <= max_lag < T):
+        raise ValueError(f"max_lag must be in [0, T-1]; got max_lag={max_lag}, T={T}")
+
+    x_c = x - x.mean(axis=0, keepdims=True)
+    denom = np.sum(x_c**2, axis=0)
+    denom = np.where(denom == 0, np.nan, denom)
+
+    acf = np.zeros((d, max_lag + 1), dtype=float)
+    acf[:, 0] = 1.0
+    for lag in range(1, max_lag + 1):
+        acf[:, lag] = np.sum(x_c[lag:] * x_c[:-lag], axis=0) / denom
+
+    return {
+        "acf": acf,
+        "mean_abs_acf_by_lag": np.nanmean(np.abs(acf), axis=0),
+    }
+
+
+def ljung_box_test(residual_series: np.ndarray, lags: list[int]) -> list | None:
+    """Run the Ljung-Box test on each column of a residual series.
+
+    Requires ``statsmodels``. Returns ``None`` if not available, emitting a
+    warning rather than raising, since this is a diagnostic check.
+
+    Parameters
+    ----------
+    residual_series : np.ndarray, shape (T,) or (T, d)
+        Residual time series. 1-D inputs are treated as a single column.
+    lags : list of int
+        Lags to test.
+
+    Returns
+    -------
+    list of pd.DataFrame, or None
+        One Ljung-Box result table per column of ``residual_series``.
+    """
+    try:
+        from statsmodels.stats.diagnostic import acorr_ljungbox
+    except ImportError:
+        warnings.warn("statsmodels not available; skipping Ljung-Box test.")
+        return None
+
+    x = np.asarray(residual_series)
+    if x.ndim == 1:
+        x = x[:, np.newaxis]
+    return [acorr_ljungbox(x[:, i], lags=lags, return_df=True) for i in range(x.shape[1])]
