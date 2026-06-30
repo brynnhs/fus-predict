@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from fuspredict.data.session import Session
+from fuspredict.evaluation.stats import rmse
 from fuspredict.models.base import Predictor, split_frames
 
 
@@ -89,8 +90,7 @@ def _rmse(preds: np.ndarray, targets: np.ndarray, mask: np.ndarray | None = None
         targets = targets[:, mask]
         if preds.size == 0:
             return float("nan")
-    diff = preds.astype(np.float64) - targets.astype(np.float64)
-    return float(np.sqrt(np.mean(diff ** 2)))
+    return float(rmse(preds, targets))
 
 
 # ---------------------------------------------------------------------------
@@ -194,8 +194,10 @@ def evaluate_predictor(
                 )
 
         except Exception as exc:
-            print(f"  [SKIP] {session.id}: {exc}")
-            warnings.warn(f"Skipping session {session.id} for model {predictor.name}: {exc}")
+            warnings.warn(
+                f"Skipping session {session.id} for model {predictor.name}: {exc}",
+                stacklevel=2,
+            )
             continue
 
     return pd.DataFrame(
