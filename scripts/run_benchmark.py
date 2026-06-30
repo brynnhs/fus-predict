@@ -26,7 +26,6 @@ Save raw prediction arrays alongside the results table::
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Callable
 
 import pandas as pd
@@ -128,7 +127,7 @@ def build_predictor_factories(modeling_cfg: dict) -> dict[str, Callable[[], Pred
         "zero": lambda: ZeroPredictor(),
         "rolling_mean": lambda: RollingMeanPredictor(window=n_lags),
         "pixel_ar": lambda: PixelAR(
-            p=n_lags,
+            lag=n_lags,
             ridge_lambda=pixel_ar_cfg["ridge_lambda"],
         ),
         "full_frame_pca_ar": lambda: FullFramePCAAR(
