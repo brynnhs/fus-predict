@@ -9,6 +9,8 @@ Inputs and outputs are numpy arrays.
 Author: Brynn Harris-Shanks, 2026
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 
@@ -219,41 +221,3 @@ def safe_temporal_corr_map(
     return corr, n_valid
 
 
-def seed_patch_mask(
-    shape_hw: tuple[int, int],
-    seed_center_yx: tuple[int, int],
-    seed_radius: int = 0,
-) -> np.ndarray:
-    """
-    Build a boolean (H, W) mask for a square seed patch.
-
-    Parameters
-    ----------
-    shape_hw : (H, W)
-    seed_center_yx : (y, x) pixel index of the patch centre.
-    seed_radius : int
-        Half-width of the patch. 0 means a single pixel.
-
-    Returns
-    -------
-    np.ndarray, shape (H, W), dtype bool
-    """
-    H, W = int(shape_hw[0]), int(shape_hw[1])
-    y, x = int(seed_center_yx[0]), int(seed_center_yx[1])
-    r    = int(seed_radius)
-
-    if H <= 0 or W <= 0:
-        raise ValueError(f"shape_hw must be positive, got {shape_hw}")
-    if r < 0:
-        raise ValueError(f"seed_radius must be >= 0, got {seed_radius}")
-    if not (0 <= y < H and 0 <= x < W):
-        raise ValueError(f"Seed centre {(y, x)} out of bounds for shape {(H, W)}")
-
-    mask = np.zeros((H, W), dtype=bool)
-    mask[max(0, y - r): min(H, y + r + 1),
-         max(0, x - r): min(W, x + r + 1)] = True
-
-    if not np.any(mask):
-        raise ValueError(f"Seed patch is empty for centre {(y, x)}, radius={r}, shape={(H, W)}")
-
-    return mask
