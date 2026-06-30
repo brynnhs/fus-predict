@@ -8,17 +8,7 @@ No file I/O or model fitting happens here.
 
 Typical usage
 -------------
-    from fus_predict.model_report_plots import (
-        plot_horizon_metric_grid,
-        plot_prediction_examples,
-    )
-
-    # Plot RMSE vs horizon for multiple models
-    plot_horizon_metric_grid(
-        horizon_df,
-        title_prefix="Linear baselines — session Se01",
-        save_paths=["figures/horizon_metrics.png"],
-    )
+    from fus_predict.model_report_plots import plot_prediction_examples
 
     # Plot GT vs prediction comparison grids
     plot_prediction_examples(
@@ -38,7 +28,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 
 CUSTOM_PALETTE = [
@@ -146,86 +135,6 @@ def _add_row_label(ax: plt.Axes, label: str) -> None:
 # ---------------------------------------------------------------------------
 # Public plot functions
 # ---------------------------------------------------------------------------
-
-def plot_horizon_metric_grid(
-    horizon_df: pd.DataFrame,
-    *,
-    title_prefix: str,
-    save_paths: list[str | Path] | None = None,
-    show_inline: bool = False,
-    exclude_models: list[str] | None = None,
-    metrics: list[tuple[str, str]] | None = None,
-) -> plt.Figure:
-    """
-    Plot one panel per metric showing metric vs forecast horizon for each model.
-
-    Parameters
-    ----------
-    horizon_df : pd.DataFrame
-        Must have columns: model, horizon, and at least one metric column
-        (e.g. RMSE_mean). One row per (model, horizon) combination.
-    title_prefix : str
-        Figure suptitle.
-    save_paths : list of path-like, optional
-        Paths to save the figure.
-    show_inline : bool
-        If True, call plt.show(). Otherwise close the figure.
-    exclude_models : list of str, optional
-        Model names to exclude from the plot.
-    metrics : list of (col_name, display_label), optional
-        Which metric columns to plot. Defaults to MSE, RMSE, MAE, R2.
-    """
-    if horizon_df.empty:
-        raise ValueError("horizon_df is empty.")
-    missing = {"model", "horizon"} - set(horizon_df.columns)
-    if missing:
-        raise ValueError(f"horizon_df missing columns: {sorted(missing)}")
-
-    metric_specs = metrics or [
-        ("MSE_mean",  "MSE"),
-        ("RMSE_mean", "RMSE"),
-        ("MAE_mean",  "MAE"),
-        ("R2_mean",   "R2"),
-    ]
-    available = [(col, lbl) for col, lbl in metric_specs if col in horizon_df.columns]
-    if not available:
-        raise ValueError("No requested metric columns found in horizon_df.")
-
-    exclude = {str(x) for x in (exclude_models or [])}
-    grouped = {
-        str(m): grp.sort_values("horizon")
-        for m, grp in horizon_df.groupby("model", sort=False)
-        if str(m) not in exclude
-    }
-    if not grouped:
-        raise ValueError("No models remain after filtering.")
-
-    ncols = 2 if len(available) > 1 else 1
-    nrows = int(np.ceil(len(available) / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(6.2 * ncols, 4.2 * nrows), squeeze=False)
-
-    for ax, (col, lbl) in zip(axes.ravel(), available):
-        for model_name, grp in grouped.items():
-            ax.plot(grp["horizon"].values, grp[col].values, marker="o", linewidth=1.8, label=model_name)
-        ax.set_title(f"{lbl} vs horizon")
-        ax.set_xlabel("Horizon")
-        ax.set_ylabel(lbl)
-        ax.grid(True, alpha=0.3)
-
-    for ax in axes.ravel()[len(available):]:
-        ax.axis("off")
-
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    if handles:
-        fig.legend(handles, labels, loc="upper center",
-                   ncol=min(4, len(labels)), fontsize=9, frameon=False)
-        fig.suptitle(title_prefix, y=1.02)
-    else:
-        fig.suptitle(title_prefix)
-
-    _finalize_plot(fig, save_paths=save_paths, show_inline=show_inline)
-    return fig
-
 
 def plot_prediction_examples(
     dataset,
