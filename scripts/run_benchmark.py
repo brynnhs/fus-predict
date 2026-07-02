@@ -94,6 +94,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignore any existing results CSV and start the benchmark fresh.",
     )
+    parser.add_argument(
+        "--config",
+        default="config.yml",
+        help="Config filename inside config/ (default: config.yml).",
+    )
     return parser.parse_args()
 
 
@@ -215,12 +220,13 @@ def main() -> None:
         )
 
     repo_root = find_repo_root()
-    config = load_project_config(repo_root)
+    config = load_project_config(repo_root, config_name=args.config)
     modeling_cfg = config["modeling"]
     ar_cfg = config["ar_analysis"]
 
-    standardized_dir = repo_root / config["paths"]["preprocessing"] / "secundo" / "baseline_only_standardized"
-    mask_dir = repo_root / config["paths"]["preprocessing"] / "secundo" / "tissue_masks"
+    subject = config["subjects"]["all"][0]
+    standardized_dir = repo_root / config["paths"]["preprocessing"] / subject / "baseline_only_standardized"
+    mask_dir = repo_root / config["paths"]["preprocessing"] / subject / "tissue_masks"
     benchmark_dir = repo_root / config["paths"]["modeling"] / "benchmark"
     benchmark_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,7 +239,10 @@ def main() -> None:
         results_path.unlink()
 
     print(f"Loading sessions from {standardized_dir} ...")
-    exclude_ids = ar_cfg["within_session_exclude"]
+    exclude_ids = ar_cfg.get(
+        "within_session_exclude",
+        config["subjects"].get("sessions_to_exclude", {}).get(subject, []),
+    )
     sessions: list[Session] = load_sessions(
         standardized_dir=standardized_dir,
         mask_dir=mask_dir,
