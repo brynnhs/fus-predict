@@ -25,7 +25,7 @@ subjects:
 # ---------------------------------------------------------------------------
 preprocessing:
 
-  run_task_frames: true
+  period: both       # baseline | task | both
 
   baseline:
     apply_log10: true
@@ -38,7 +38,7 @@ preprocessing:
     save_previews: true
     overwrite:   true
     flip_session_ids_by_subject:
-      secundo: []
+      secundo: [Se04092020, Se01092020, Se25082020, Se03092020, Se27082020, Se04082020, Se24022020]
 
   filtering:
     enable_lowpass:     true
