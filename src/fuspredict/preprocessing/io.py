@@ -734,7 +734,7 @@ def extract_and_save_baseline_mouse(
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    session_id = Path(scan_path).stem  # e.g. "2Dscan_whiskers_fus2D"
+    session_id = Path(scan_path).with_suffix("").stem  # strips both .source and .scan
     out_path = out_dir / f"baseline_{session_id}_{BASELINE_STAGE_EXTRACTED}.nc"
 
     if out_path.exists() and not overwrite:
