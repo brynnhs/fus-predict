@@ -334,6 +334,7 @@ def process_all_baseline_files(
     overwrite: bool = False,
     apply_log10: bool = True,
     log10_eps: float = 1e-6,
+    exclude_ids: set[str] | None = None,
 ) -> list[str]:
     """Extract baseline stage files for all sessions in a source directory."""
     fus_files = sorted(glob.glob(os.path.join(data_directory, "Datas_*.mat")))
@@ -346,6 +347,9 @@ def process_all_baseline_files(
 
     for fus_path in fus_files:
         date_code  = Path(fus_path).stem.replace("Datas_", "")
+        if exclude_ids and date_code in exclude_ids:
+            print(f"  Skipping excluded session {date_code}")
+            continue
         label_path = os.path.join(data_directory, f"Label_pauses_{date_code}.mat")
 
         if not os.path.exists(label_path):
@@ -506,6 +510,7 @@ def process_all_task_files(
     overwrite: bool = False,
     apply_log10: bool = True,
     log10_eps: float = 1e-6,
+    exclude_ids: set[str] | None = None,
 ) -> list[str]:
     """Extract task stage files for all sessions in a source directory."""
     fus_files = sorted(glob.glob(os.path.join(data_directory, "Datas_*.mat")))
@@ -518,6 +523,9 @@ def process_all_task_files(
 
     for fus_path in fus_files:
         date_code  = Path(fus_path).stem.replace("Datas_", "")
+        if exclude_ids and date_code in exclude_ids:
+            print(f"  Skipping excluded session {date_code}")
+            continue
         label_path = os.path.join(data_directory, f"Label_pauses_{date_code}.mat")
 
         if not os.path.exists(label_path):

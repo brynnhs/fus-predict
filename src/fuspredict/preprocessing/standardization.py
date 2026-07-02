@@ -123,6 +123,76 @@ def standardize_frames_pixelwise(
     return frames_z.astype(np.float32), mean_map, std_map
 
 
+def standardize_frames_pixelwise_causal(
+    frames: np.ndarray,
+    *,
+    eps: float = 1e-8,
+    floor_percentile: float = 10.0,
+    clip_abs: float | None = 3.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Causal (expanding-window) per-pixel z-score standardization.
+
+    At each timepoint t, mean and std are estimated from frames 0..t (inclusive),
+    so no future information is used. The std floor is applied per-frame using
+    the spatial distribution of the running std map at that timepoint.
+
+    Frame 0 is standardized with mean=frame[0] and std=floor (no variance yet),
+    yielding zeros for t=0.
+
+    Parameters
+    ----------
+    frames : np.ndarray, shape (T, H, W)
+    eps : float
+        Minimum value for the std floor.
+    floor_percentile : float
+        Percentile of the per-frame std map used as a robust floor.
+    clip_abs : float or None
+        If provided, clip standardized output to [-clip_abs, +clip_abs].
+
+    Returns
+    -------
+    frames_z : np.ndarray, shape (T, H, W), float32
+        Standardized frames.
+    mean_map : np.ndarray, shape (H, W), float32
+        Per-pixel mean estimated from the full session (for reference/inversion).
+    std_map : np.ndarray, shape (H, W), float32
+        Per-pixel std estimated from the full session (for reference/inversion).
+    """
+    _validate_frames_thw(frames, ctx="standardize_frames_pixelwise_causal")
+    arr = np.asarray(frames, dtype=np.float64)
+    T, H, W = arr.shape
+
+    frames_z = np.empty((T, H, W), dtype=np.float32)
+
+    # Welford online mean/variance accumulators
+    running_mean = np.zeros((H, W), dtype=np.float64)
+    running_M2   = np.zeros((H, W), dtype=np.float64)
+
+    for t in range(T):
+        n = t + 1
+        delta = arr[t] - running_mean
+        running_mean += delta / n
+        delta2 = arr[t] - running_mean
+        running_M2 += delta * delta2
+
+        running_var = running_M2 / n  # biased (population) variance
+        running_std = np.sqrt(running_var).astype(np.float32)
+
+        std_floor = max(float(np.percentile(running_std, floor_percentile)), float(eps))
+        std_floored = np.maximum(running_std, std_floor)
+
+        z = (arr[t] - running_mean).astype(np.float32) / std_floored
+        if clip_abs is not None and float(clip_abs) > 0:
+            z = np.clip(z, -float(clip_abs), float(clip_abs))
+        frames_z[t] = z
+
+    mean_map = running_mean.astype(np.float32)
+    std_map  = running_std.astype(np.float32)
+
+    return frames_z, mean_map, std_map
+
+
 def inverse_standardize(
     frames_z: np.ndarray,
     mean_map: np.ndarray,
@@ -162,6 +232,7 @@ def standardize_stage_sessions(
     floor_percentile: float = 10.0,
     clip_abs: float | None = 3.0,
     smooth_kernel_sizes: tuple[int, ...] = (),
+    causal: bool = False,
     overwrite: bool = False,
 ) -> list[str]:
     """
@@ -194,6 +265,10 @@ def standardize_stage_sessions(
     smooth_kernel_sizes : tuple of int
         If provided, also save spatially-smoothed standardized variants for
         each kernel size (e.g. (2, 3) saves 2x2 and 3x3 smoothed outputs).
+    causal : bool
+        If True, use expanding-window (causal) standardization instead of
+        whole-session statistics. The mean_map and std_map saved in the output
+        reflect the final running estimates (i.e. the full-session values).
     overwrite : bool
         Overwrite existing output files.
 
@@ -222,8 +297,10 @@ def standardize_stage_sessions(
         condition  = _condition_for_stage(stage_in)
         frames_in  = da.values  # (T, H, W)
 
+        _std_fn = standardize_frames_pixelwise_causal if causal else standardize_frames_pixelwise
+
         def _make_dataset(frames: np.ndarray, kernel_size: int | None = None) -> xr.Dataset:
-            frames_z, mean_map, std_map = standardize_frames_pixelwise(
+            frames_z, mean_map, std_map = _std_fn(
                 frames,
                 eps=eps,
                 floor_percentile=floor_percentile,
@@ -236,7 +313,7 @@ def standardize_stage_sessions(
                 "session_id":           session_id,
                 "condition":            condition,
                 "input_stage":          stage_in,
-                "standardize_method":   "zscore",
+                "standardize_method":   "zscore_causal" if causal else "zscore",
                 "standardize_eps":      eps,
                 "floor_percentile":     floor_percentile,
                 "clip_abs":             clip_abs if clip_abs is not None else "none",

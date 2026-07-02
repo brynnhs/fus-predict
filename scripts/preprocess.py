@@ -80,6 +80,7 @@ def main() -> None:
             overwrite=base_cfg["overwrite"],
             apply_log10=APPLY_LOG10,
             log10_eps=base_cfg["log10_eps"],
+            exclude_ids=exclude_ids,
         )
         baseline_paths = list_nc(baseline_dir, exclude_ids)
         print(f"  Baseline sessions: {len(baseline_paths)}")
@@ -93,6 +94,7 @@ def main() -> None:
                 overwrite=base_cfg["overwrite"],
                 apply_log10=APPLY_LOG10,
                 log10_eps=base_cfg["log10_eps"],
+                exclude_ids=exclude_ids,
             )
             task_paths = list_nc(task_dir, exclude_ids)
             print(f"  Task sessions: {len(task_paths)}")
@@ -117,6 +119,7 @@ def main() -> None:
                 floor_percentile=std_cfg["floor_percentile"],
                 clip_abs=std_cfg["clip_abs"],
                 smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
+                causal=std_cfg.get("causal", False),
                 overwrite=std_cfg["overwrite"],
             )
             print(f"  Task standardized: {len(list_nc(task_std_dir))}")
@@ -166,6 +169,7 @@ def main() -> None:
             floor_percentile=std_cfg["floor_percentile"],
             clip_abs=std_cfg["clip_abs"],
             smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
+            causal=std_cfg.get("causal", False),
             overwrite=std_cfg["overwrite"],
         )
         print(f"  Standardized sessions: {len(list_nc(std_dir))}")

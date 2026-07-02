@@ -45,6 +45,7 @@ from fuspredict.evaluation.visualization import (
     plot_spatial_rmse_diff,
     plot_spatial_strip,
     plot_wilcoxon_table,
+    make_triplet_video,
 )
 from fuspredict.project import find_repo_root, load_project_config
 
@@ -152,6 +153,7 @@ def generate_scalar_figures(
     path = out_dir / "fig5_spatial_strip"
     plot_spatial_strip(per_session_df, PRIMARY_HORIZON, models, path)
     written.append(path.with_suffix(".pdf"))
+
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +271,11 @@ def generate_spatial_figures(
     path = out_dir / "fig9_rmse_vs_time"
     plot_rmse_vs_time(predictions, path)
     written.append(path.with_suffix(".pdf"))
+    
+    for model, (gt, pred) in predictions.items():
+        path = out_dir / f"video_{session_id}_{model}_triplet.mp4"
+        make_triplet_video(gt, pred, path, session_id=session_id)
+        written.append(path)
 
 
 # ---------------------------------------------------------------------------
