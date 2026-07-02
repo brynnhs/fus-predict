@@ -285,7 +285,12 @@ def generate_spatial_figures(
 def main() -> None:
     """Run the full reporting pipeline end-to-end."""
     repo_root = find_repo_root()
-    config = load_project_config(repo_root)
+    # Pre-parse just --config so we can load the right config before full parse
+    import sys as _sys
+    _pre = argparse.ArgumentParser(add_help=False)
+    _pre.add_argument("--config", default="config.yml")
+    _pre_args, _ = _pre.parse_known_args(_sys.argv[1:])
+    config = load_project_config(repo_root, config_name=_pre_args.config)
     ar_cfg = config.get("ar_analysis", {})
     default_session_id = str(ar_cfg.get("primary_session_id", ""))
 

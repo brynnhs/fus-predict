@@ -23,6 +23,8 @@ expressiveness for a much smaller parameter count than per-pixel AR.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from sklearn.decomposition import PCA
 
@@ -203,7 +205,9 @@ class FullFramePCAAR:
             svd_solver="randomized",
             random_state=self.seed,
         )
-        self._pca.fit(flattened)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
+            self._pca.fit(flattened)
 
         latents = [
             self._pca.transform(f.reshape(f.shape[0], -1).astype(np.float64))
@@ -489,7 +493,9 @@ class PatchLagPCAAR:
                 svd_solver="randomized",
                 random_state=self.seed,
             )
-            pca.fit(concat_lag)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
+                pca.fit(concat_lag)
             self._patch_pca[(r, c)] = pca
 
             # Latent code per lag window: row n is the PCA projection of

@@ -1,0 +1,127 @@
+# fus-predict configuration — mouse experiment
+# ---------------------------------------------
+# Switch to this config with: python scripts/preprocess.py --config config_mouse.yml
+#                             python scripts/run_benchmark.py --config config_mouse.yml
+
+# ---------------------------------------------------------------------------
+# Paths (relative to repo root)
+# ---------------------------------------------------------------------------
+paths:
+  sourcedata:    data/sourcedata
+  preprocessing: derivatives/preprocessing
+  modeling:      derivatives/modeling_mouse
+
+# ---------------------------------------------------------------------------
+# Subjects
+# ---------------------------------------------------------------------------
+subjects:
+  all:
+    - mouse
+  sessions_to_exclude:
+    mouse:
+      - S1Amandine
+      - S2J_20260422_2Dscan_labeotech_test_whiskers_6
+  species: mouse
+  excel_metadata: data/sourcedata/mouse/Summary PeriFus experiments.xlsx
+
+# ---------------------------------------------------------------------------
+# Preprocessing
+# ---------------------------------------------------------------------------
+preprocessing:
+
+  run_task_frames: false
+
+  baseline:
+    apply_log10: true
+    log10_eps:   1.0e-6
+    overwrite:   false
+
+  geometry:
+    rotate_k:    0
+    target_size: 112
+    save_previews: true
+    overwrite:   false
+    flip_session_ids_by_subject:
+      mouse: []
+
+  filtering:
+    enable_lowpass:     true
+    lowpass_cutoff_hz:  0.5
+    lowpass_order:      4
+    enable_highpass:    false
+    highpass_cutoff_hz: 0.01
+    highpass_order:     3
+    enable_clip:        false
+    clip_bottom:        1.0
+    clip_top:           99.0
+    fps_fallback:       2.5
+    overwrite:          false
+
+  standardization:
+    eps:               1.0e-8
+    floor_percentile:  10.0
+    clip_abs:          3.0
+    smooth_kernel_sizes: []
+    causal:            true
+    overwrite:         false
+
+  tissue_segmentation:
+    vessel_intensity_percentile: 60.0
+    vessel_cv_percentile:        40.0
+    min_vessel_pixels:           10
+    overwrite:                   false
+
+# ---------------------------------------------------------------------------
+# Signal characterization
+# ---------------------------------------------------------------------------
+persistence_analysis:
+  min_var:               1.0e-6
+  fps_fallback:          2.5
+  max_acf_lag:           20
+  example_target_frame:  10
+  pearson_rolling_window: 20
+  acf_patch_sizes: [1, 5, 10, 14, 20, 28]
+
+# ---------------------------------------------------------------------------
+# AR / modeling
+# ---------------------------------------------------------------------------
+ar_analysis:
+  patch_lag_pca_ar_patch_size: 14
+  primary_session_id:          null   # set after first run
+  within_session_exclude:
+    - S1Amandine
+    - S2J_20260422_2Dscan_labeotech_test_whiskers_6
+
+modeling:
+  frame_rate:    2.5
+  train_frac:    0.8
+  n_lags:        10
+  horizons:      [1, 5, 10]
+
+  pixel_ar:
+    ridge_lambda: 0.01
+
+  full_frame_pca_ar:
+    n_components: 10
+    ridge_lambda: 0.01
+
+  patch_lag_pca_ar:
+    patch_size:   14
+    n_components: 10
+    ridge_lambda: 0.01
+
+  convlstm:
+    hidden_channels:  32
+    kernel_size:      3
+    n_layers:         1
+    forget_gate_bias: 1.0
+    learning_rate:    3.0e-4
+    batch_size:       128
+    n_epochs:         50
+    grad_clip_norm:   1.0
+
+  pca_basis:
+    max_frames: 2000
+    seed:       42
+    use_torch:  true
+    device:     cuda
