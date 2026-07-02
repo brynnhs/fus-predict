@@ -29,6 +29,7 @@ Usage:
   python scripts/characterize.py
 """
 
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -919,20 +920,37 @@ def _figX_acf_distribution_across_sessions(session_dirs: list[Path], out: Path) 
 # Main
 # ---------------------------------------------------------------------------
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run signal characterization.")
+    parser.add_argument(
+        "--config",
+        default="config.yml",
+        help="Config filename inside config/ (default: config.yml).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args      = _parse_args()
     repo_root = find_repo_root()
-    config    = load_project_config(repo_root)
+    config    = load_project_config(repo_root, config_name=args.config)
 
     pa    = dict(config['persistence_analysis'])
     arcfg = config.get('ar_analysis', {})
     pa.setdefault('acf_patch_sizes',             arcfg.get('acf_patch_sizes', [5, 10, 15, 20, 25, 30]))
     pa.setdefault('patch_lag_pca_ar_patch_size', arcfg.get('patch_lag_pca_ar_patch_size', 15))
 
-    EXCLUDED_SESSIONS = set(arcfg.get('within_session_exclude', []))
+    subject = config['subjects']['all'][0]
+    EXCLUDED_SESSIONS = set(
+        arcfg.get(
+            'within_session_exclude',
+            config['subjects'].get('sessions_to_exclude', {}).get(subject, []),
+        )
+    )
 
     preproc_root     = repo_root / config['paths']['preprocessing']
-    standardized_dir = preproc_root / 'secundo' / 'baseline_only_standardized'
-    mask_dir          = preproc_root / 'secundo' / 'tissue_masks'
+    standardized_dir = preproc_root / subject / 'baseline_only_standardized'
+    mask_dir         = preproc_root / subject / 'tissue_masks'
 
     sessions = load_sessions(standardized_dir, mask_dir=mask_dir, exclude_ids=list(EXCLUDED_SESSIONS))
     assert sessions, f"No sessions loaded from {standardized_dir}"
@@ -941,7 +959,7 @@ def main() -> None:
     MIN_VAR = pa['min_var']
     masks = {s.id: _compute_analysis_mask(s, MIN_VAR) for s in sessions}
 
-    OUT = repo_root / 'derivatives' / 'modeling' / 'signal_characterization' / 'secundo_29sessions'
+    OUT = repo_root / 'derivatives' / 'modeling' / 'signal_characterization' / subject
     OUT.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame([{
