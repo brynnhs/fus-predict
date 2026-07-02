@@ -89,40 +89,44 @@ def main() -> None:
         )
         subj_source = source_root / subject
 
+        period       = config["preprocessing"].get("period", "baseline")
+        run_baseline = period in ("baseline", "both")
+        run_task     = period in ("task", "both")
+
         # Stage 1 — Baseline extraction
-        baseline_dir = subj_deriv / f"baseline_only{dir_suffix}"
-
-        if species == "mouse":
-            # Mouse: read .source.scan HDF5 files; stimulus timing from Excel
-            excel_path  = repo_root / config["subjects"].get(
-                "excel_metadata",
-                "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
-            )
-            process_all_baseline_files_mouse(
-                data_directory=str(subj_source),
-                output_dir=str(baseline_dir),
-                excel_path=str(excel_path),
-                overwrite=base_cfg["overwrite"],
-                apply_log10=APPLY_LOG10,
-                log10_eps=base_cfg["log10_eps"],
-                exclude_ids=exclude_ids,
-            )
-        else:
-            # Monkey: read Datas_*.mat + Label_pauses_*.mat files
-            process_all_baseline_files(
-                str(subj_source),
-                str(baseline_dir),
-                overwrite=base_cfg["overwrite"],
-                apply_log10=APPLY_LOG10,
-                log10_eps=base_cfg["log10_eps"],
-                exclude_ids=exclude_ids,
-            )
-
-        baseline_paths = list_nc(baseline_dir, exclude_ids)
-        print(f"  Baseline sessions: {len(baseline_paths)}")
+        baseline_dir   = subj_deriv / f"baseline_only{dir_suffix}"
+        baseline_paths = []
+        if run_baseline:
+            if species == "mouse":
+                # Mouse: read .source.scan HDF5 files; stimulus timing from Excel
+                excel_path  = repo_root / config["subjects"].get(
+                    "excel_metadata",
+                    "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
+                )
+                process_all_baseline_files_mouse(
+                    data_directory=str(subj_source),
+                    output_dir=str(baseline_dir),
+                    excel_path=str(excel_path),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
+            else:
+                # Monkey: read Datas_*.mat + Label_pauses_*.mat files
+                process_all_baseline_files(
+                    str(subj_source),
+                    str(baseline_dir),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
+            baseline_paths = list_nc(baseline_dir, exclude_ids)
+            print(f"  Baseline sessions: {len(baseline_paths)}")
 
         # Stage 1b — Task extraction (monkey only; mouse has no separate task frames)
-        if config["preprocessing"].get("run_task_frames", False) and species != "mouse":
+        if run_task and species != "mouse":
             task_dir = subj_deriv / f"task_only{dir_suffix}"
             process_all_task_files(
                 str(subj_source),
@@ -160,53 +164,57 @@ def main() -> None:
             )
             print(f"  Task standardized: {len(list_nc(task_std_dir))}")
 
-        # Stage 2 — Reorient and resize baseline sessions
-        reoriented_dir = subj_deriv / f"baseline_only_reoriented_resized{dir_suffix}"
-        reorient_baseline_sessions(
-            baseline_paths,
-            reoriented_dir,
-            rotate_k=geo_cfg["rotate_k"],
-            flip_session_ids=flip_ids,
-            target_size=geo_cfg["target_size"],
-            save_previews=geo_cfg["save_previews"],
-            overwrite=geo_cfg["overwrite"],
-        )
-        reoriented_paths = list_nc(reoriented_dir)
-        print(f"  Reoriented sessions: {len(reoriented_paths)}")
+        # Stages 2–5 — Baseline geometry, filtering, standardization, tissue masks
+        reoriented_paths = []
+        filtered_paths   = []
+        if run_baseline:
+            # Stage 2 — Reorient and resize
+            reoriented_dir = subj_deriv / f"baseline_only_reoriented_resized{dir_suffix}"
+            reorient_baseline_sessions(
+                baseline_paths,
+                reoriented_dir,
+                rotate_k=geo_cfg["rotate_k"],
+                flip_session_ids=flip_ids,
+                target_size=geo_cfg["target_size"],
+                save_previews=geo_cfg["save_previews"],
+                overwrite=geo_cfg["overwrite"],
+            )
+            reoriented_paths = list_nc(reoriented_dir)
+            print(f"  Reoriented sessions: {len(reoriented_paths)}")
 
-        # Stage 3 — Temporal filtering (lowpass, highpass, amplitude clip)
-        filtered_dir = subj_deriv / f"baseline_only_filtered{dir_suffix}"
-        filter_reoriented_sessions(
-            reoriented_paths,
-            filtered_dir,
-            enable_lowpass=filt_cfg.get("enable_lowpass", False),
-            lowpass_cutoff_hz=filt_cfg.get("lowpass_cutoff_hz", 0.5),
-            lowpass_order=filt_cfg.get("lowpass_order", 4),
-            enable_highpass=filt_cfg["enable_highpass"],
-            highpass_cutoff_hz=filt_cfg["highpass_cutoff_hz"],
-            highpass_order=filt_cfg["highpass_order"],
-            enable_clip=filt_cfg["enable_clip"],
-            clip_bottom=filt_cfg["clip_bottom"],
-            clip_top=filt_cfg["clip_top"],
-            fps_fallback=filt_cfg["fps_fallback"],
-            overwrite=filt_cfg["overwrite"],
-        )
-        filtered_paths = list_nc(filtered_dir)
-        print(f"  Filtered sessions: {len(filtered_paths)}")
+            # Stage 3 — Temporal filtering
+            filtered_dir = subj_deriv / f"baseline_only_filtered{dir_suffix}"
+            filter_reoriented_sessions(
+                reoriented_paths,
+                filtered_dir,
+                enable_lowpass=filt_cfg.get("enable_lowpass", False),
+                lowpass_cutoff_hz=filt_cfg.get("lowpass_cutoff_hz", 0.5),
+                lowpass_order=filt_cfg.get("lowpass_order", 4),
+                enable_highpass=filt_cfg["enable_highpass"],
+                highpass_cutoff_hz=filt_cfg["highpass_cutoff_hz"],
+                highpass_order=filt_cfg["highpass_order"],
+                enable_clip=filt_cfg["enable_clip"],
+                clip_bottom=filt_cfg["clip_bottom"],
+                clip_top=filt_cfg["clip_top"],
+                fps_fallback=filt_cfg["fps_fallback"],
+                overwrite=filt_cfg["overwrite"],
+            )
+            filtered_paths = list_nc(filtered_dir)
+            print(f"  Filtered sessions: {len(filtered_paths)}")
 
-        # Stage 4 — Standardization
-        std_dir = subj_deriv / f"baseline_only_standardized{dir_suffix}"
-        standardize_stage_sessions(
-            reoriented_paths + filtered_paths,
-            std_dir,
-            eps=std_cfg["eps"],
-            floor_percentile=std_cfg["floor_percentile"],
-            clip_abs=std_cfg["clip_abs"],
-            smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
-            causal=std_cfg.get("causal", False),
-            overwrite=std_cfg["overwrite"],
-        )
-        print(f"  Standardized sessions: {len(list_nc(std_dir))}")
+            # Stage 4 — Standardization
+            std_dir = subj_deriv / f"baseline_only_standardized{dir_suffix}"
+            standardize_stage_sessions(
+                reoriented_paths + filtered_paths,
+                std_dir,
+                eps=std_cfg["eps"],
+                floor_percentile=std_cfg["floor_percentile"],
+                clip_abs=std_cfg["clip_abs"],
+                smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
+                causal=std_cfg.get("causal", False),
+                overwrite=std_cfg["overwrite"],
+            )
+            print(f"  Standardized sessions: {len(list_nc(std_dir))}")
 
         # Stage 5 — Tissue segmentation (vessel vs parenchyma masks)
         print(f"\n=== Tissue segmentation for {subject} ===")
