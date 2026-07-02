@@ -610,7 +610,24 @@ def load_source_scan(path: str | os.PathLike[str]) -> tuple[np.ndarray, float, n
     if raw.ndim == 4 and raw.shape[2] == 1:
         raw = raw[:, :, 0, :]
 
-    fps = 1.0 / dt if dt > 0 else 2.5
+    _DT_MIN, _DT_MAX = 0.01, 10.0  # plausible fUS range: 0.1–100 Hz
+    if dt <= 0:
+        warnings.warn(
+            f"acqMetaData/voxDim/dt={dt} is non-positive; using fps fallback of 2.5 Hz. "
+            "Check HDF5 file integrity.",
+            stacklevel=2,
+        )
+        fps = 2.5
+    elif not (_DT_MIN <= dt <= _DT_MAX):
+        warnings.warn(
+            f"acqMetaData/voxDim/dt={dt:.6f} s is outside expected range "
+            f"[{_DT_MIN}, {_DT_MAX}] s — possible unit mismatch (ms vs s?). "
+            f"Computed fps={1.0/dt:.4f} Hz. Verify HDF5 units.",
+            stacklevel=2,
+        )
+        fps = 1.0 / dt
+    else:
+        fps = 1.0 / dt
     return raw, fps, frame_times, scan_meta
 
 
