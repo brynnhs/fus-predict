@@ -707,6 +707,7 @@ def extract_and_save_baseline_mouse(
     apply_log10: bool = True,
     log10_eps: float = 1e-6,
     overwrite: bool = False,
+    _preloaded: tuple | None = None,
 ) -> str | None:
     """
     Extract resting-state frames from a .source.scan file and save as .nc.
@@ -741,7 +742,10 @@ def extract_and_save_baseline_mouse(
         return str(out_path)
 
     try:
-        frames, fps, frame_times, scan_meta = load_source_scan(scan_path)
+        if _preloaded is not None:
+            frames, fps, frame_times, scan_meta = _preloaded
+        else:
+            frames, fps, frame_times, scan_meta = load_source_scan(scan_path)
         T_total = frames.shape[0]
 
         if timing is not None:
