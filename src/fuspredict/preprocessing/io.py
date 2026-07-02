@@ -875,12 +875,14 @@ def process_all_baseline_files_mouse(
             print(f"  Skipping excluded session {session_id}")
             continue
 
-        # Read subject_tag from HDF5 to look up timing
+        # Load the scan once; reuse the result for both subject-tag lookup and extraction
         timing: dict | None = None
-        if timing_lookup:
-            try:
-                _, _, _, meta = load_source_scan(scan_path)
-                subject_tag = meta["subject_tag"]
+        preloaded: tuple | None = None
+        try:
+            preloaded = load_source_scan(scan_path)
+            _, _, _, meta = preloaded
+            subject_tag = meta["subject_tag"]
+            if timing_lookup:
                 if subject_tag in timing_lookup:
                     timing = timing_lookup[subject_tag]
                     if timing is None:
@@ -895,12 +897,12 @@ def process_all_baseline_files_mouse(
                         f"treating all frames as baseline.",
                         stacklevel=2,
                     )
-            except Exception as exc:
-                warnings.warn(
-                    f"{session_id}: could not read HDF5 metadata ({exc}) — "
-                    f"treating all frames as baseline.",
-                    stacklevel=2,
-                )
+        except Exception as exc:
+            warnings.warn(
+                f"{session_id}: could not read HDF5 file ({exc}) — skipping.",
+                stacklevel=2,
+            )
+            continue
 
         out = extract_and_save_baseline_mouse(
             scan_path=scan_path,
@@ -909,6 +911,7 @@ def process_all_baseline_files_mouse(
             apply_log10=apply_log10,
             log10_eps=log10_eps,
             overwrite=overwrite,
+            _preloaded=preloaded,
         )
         if out is not None:
             saved_paths.append(out)
