@@ -1,6 +1,8 @@
 # fus-predict
 
-Frame-prediction benchmark for functional ultrasound (fUS) imaging: given a window of past Power Doppler frames from a baseline recording, predict the frame `N` steps ahead. Compares simple baselines (zero, rolling mean) against autoregressive (per-pixel, PCA-compressed) and ConvLSTM models, with RMSE / vessel-vs-parenchyma / statistical-significance reporting.
+Functional ultrasound (fUS) is a neuroimaging modality that tracks brain activity through changes in cerebral blood volume, captured as a time series of 2D Power Doppler frames. Understanding how predictable those frames are — and which parts of the brain are most predictable — is a prerequisite for building stimulus-decoding or closed-loop models on top of fUS.
+
+This repo is a frame-prediction benchmark: given a window of past Power Doppler frames from a resting-state (baseline) recording, predict the frame `N` steps ahead. It compares simple baselines (zero, rolling mean) against autoregressive models (per-pixel ridge regression, PCA-compressed ridge regression) and a ConvLSTM, with RMSE evaluated separately over vessel and parenchyma regions and Wilcoxon tests for statistical significance across sessions.
 
 ## 5-minute setup
 
