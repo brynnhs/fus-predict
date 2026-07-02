@@ -87,7 +87,7 @@ def main() -> None:
         flip_ids    = set() if species == "mouse" else set(
             geo_cfg["flip_session_ids_by_subject"].get(subject, [])
         )
-        subj_source = source_root / ("mouse" if species == "mouse" else subject)
+        subj_source = source_root / subject
 
         # Stage 1 — Baseline extraction
         baseline_dir = subj_deriv / f"baseline_only{dir_suffix}"
