@@ -70,15 +70,10 @@ def parse_args(default_session_id: str) -> argparse.Namespace:
     -------
     argparse.Namespace
         Parsed arguments: ``results_dir``, ``out_dir``, ``session_id``,
-        ``skip_spatial``, ``config``.
+        ``skip_spatial``.
     """
     parser = argparse.ArgumentParser(
         description="Generate comparison figures and statistics from a benchmark run.",
-    )
-    parser.add_argument(
-        "--config",
-        default="config.yml",
-        help="Config filename inside config/ (default: config.yml).",
     )
     parser.add_argument(
         "--results-dir",
