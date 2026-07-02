@@ -22,6 +22,7 @@ import pandas as pd
 from fuspredict.data.session import Session
 from fuspredict.evaluation.stats import rmse
 from fuspredict.models.base import Predictor, split_frames
+from fuspredict.models.convlstm import ConvLSTMVesselLoss
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +150,8 @@ def evaluate_predictor(
     for session in sessions:
         try:
             train, test = split_frames(session.frames, train_frac=train_frac)
+            if isinstance(predictor, ConvLSTMVesselLoss) and session.vessel_mask is not None:
+                predictor.set_vessel_mask(session.vessel_mask)
             predictor.fit(train_frames=[train], horizons=horizons)
 
             for horizon in horizons:
