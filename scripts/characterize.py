@@ -1,9 +1,9 @@
 """
-03_signal_characterization.py
-------------------------------
+scripts/characterize.py
+------------------------
 Signal characterisation — per-session and cross-session figures.
 
-Loads standardized baseline sessions (.nc Datasets) and writes cached
+Loads standardized baseline sessions (as Session objects) and writes cached
 numpy / CSV outputs and publication-ready figures to:
 
     derivatives/modeling/signal_characterization/secundo_29sessions/
@@ -26,7 +26,7 @@ Cached arrays / tables (per session sub-directory):
   patch_acf_<size>.npy  (one per patch size in acf_patch_sizes)
 
 Usage:
-  python 03_signal_characterization.py
+  python scripts/characterize.py
 """
 
 from pathlib import Path
@@ -35,16 +35,16 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 from fuspredict.autocorrelation import (
     robust_limits,
     safe_standardized_acf,
     safe_temporal_corr_map,
 )
-from fuspredict.modeling.autoregressive import _tile_patches
+from fuspredict.data.loading import load_sessions
+from fuspredict.data.session import Session
+from fuspredict.models.pca_ar import PatchLagPCAAR
 from fuspredict.plot_utils import savefig
-from fuspredict.preprocessing.io import STAGE_STANDARDIZED
 from fuspredict.project import find_repo_root, load_project_config
 
 matplotlib.use('Agg')
@@ -104,7 +104,7 @@ def _add_scale_bar(ax, pixel_size_mm: float = 0.1, bar_mm: float = 1.0,
 def _patch_mean_acf(frames: np.ndarray, patch_radius: int, max_lag: int) -> np.ndarray:
     """Return (P, max_lag) ACF matrix for each patch's mean time series."""
     T, H, W = frames.shape
-    patches = _tile_patches(H, W, patch_radius)
+    patches = PatchLagPCAAR.tile_patches(H, W, patch_radius)
     acfs = []
     for rs, cs in patches:
         ts = frames[:, rs, cs].mean(axis=(1, 2))
@@ -119,60 +119,21 @@ def _patch_mean_acf(frames: np.ndarray, patch_radius: int, max_lag: int) -> np.n
 
 
 # ---------------------------------------------------------------------------
-# Data loading
+# Per-session analysis mask
 # ---------------------------------------------------------------------------
 
-def _load_sessions(nc_paths: list[str], cfg: dict) -> list[dict]:
-    MIN_VAR          = cfg['min_var']
-    FPS_FALLBACK     = cfg['fps_fallback']
-    PIXELS_PER_GROUP = cfg.get('pixels_per_group', 4)
+def _compute_analysis_mask(session: Session, min_var: float) -> np.ndarray:
+    """
+    Compute the analysis-specific pixel mask for a session.
 
-    sessions = []
-    for i, path in enumerate(nc_paths):
-        ds  = xr.open_dataset(path)
-        fr  = ds["frames"].values.astype(np.float32)        # (T, H, W)
-        mmp = ds["mean_map"].values.astype(np.float32)      # (H, W)
-        smp = ds["std_map"].values.astype(np.float32)       # (H, W)
-        fps = float(ds.attrs.get("frame_rate", FPS_FALLBACK))
-        session_id = str(ds.attrs.get("session_id", Path(path).stem))
-
-        var  = np.nanvar(fr, axis=0)
-        mask = (
-            np.all(np.isfinite(fr), axis=0)
-            & np.isfinite(var)
-            & (var > MIN_VAR)
-            & np.isfinite(mmp)
-            & np.isfinite(smp)
-            & (np.abs(smp) > 0)
-        )
-
-        gmean = np.nanmean(fr[:, mask], axis=1)
-        gstd  = np.nanstd(fr[:, mask],  axis=1)
-
-        valid = np.flatnonzero(mask.ravel())
-        vv    = var.ravel()[valid]
-        order = np.argsort(vv)
-        rng   = np.random.default_rng(42 + i)
-        groups = {
-            'representative': np.sort(rng.choice(valid, size=min(PIXELS_PER_GROUP, valid.size), replace=False)),
-            'high_var':       valid[order[::-1][:PIXELS_PER_GROUP]],
-            'low_var':        valid[order[:PIXELS_PER_GROUP]],
-        }
-
-        sessions.append({
-            'path':          path,
-            'session_id':    session_id,
-            'frames':        fr,
-            'mean_map':      mmp,
-            'std_map':       smp,
-            'mask':          mask,
-            'var':           var,
-            'gmean':         gmean,
-            'gstd':          gstd,
-            'groups':        groups,
-            'frame_rate_hz': fps,
-        })
-    return sessions
+    This is distinct from ``Session.vessel_mask``: it selects pixels with
+    finite, non-degenerate signal (sufficient temporal variance) for use in
+    signal-characterization statistics, not anatomical vessel/parenchyma
+    classification.
+    """
+    fr  = session.frames
+    var = np.nanvar(fr, axis=0)
+    return np.all(np.isfinite(fr), axis=0) & np.isfinite(var) & (var > min_var)
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +431,7 @@ def _fig7_within_patch_residual_corr(fr, mask, patch_size: int, sout) -> None:
     frames[:, ~mask] = np.nan
 
     patch_radius = max(1, patch_size // 2)
-    patches      = _tile_patches(fr.shape[1], fr.shape[2], patch_radius)
+    patches      = PatchLagPCAAR.tile_patches(fr.shape[1], fr.shape[2], patch_radius)
     T            = frames.shape[0]
 
     mean_pair_corrs:     list[float] = []
@@ -561,17 +522,29 @@ def _fig7_within_patch_residual_corr(fr, mask, patch_size: int, sout) -> None:
 # Per-session dispatcher
 # ---------------------------------------------------------------------------
 
-def run_session(s: dict, sout: Path, cfg: dict) -> None:
+def run_session(session: Session, mask: np.ndarray, sout: Path, cfg: dict) -> None:
+    """
+    Compute and save per-session statistics and figures.
+
+    Parameters
+    ----------
+    session : Session
+        Loaded session (frames, fps, id).
+    mask : np.ndarray
+        Analysis mask for this session, shape ``(H, W)``, from
+        :func:`_compute_analysis_mask`.
+    sout : Path
+        Output directory for this session's cached arrays/tables/figures.
+    cfg : dict
+        ``persistence_analysis`` config (merged with AR-analysis defaults).
+    """
     sout.mkdir(parents=True, exist_ok=True)
 
-    fr    = s['frames']
-    mask  = s['mask']
-    gmean = s['gmean']
-    gstd  = s['gstd']
-    fps   = s['frame_rate_hz']
+    fr  = session.frames
+    fps = session.fps
 
     if mask.sum() == 0 or fr.shape[0] < 2:
-        print(f'  {s["session_id"]} — skipped (empty mask or too few frames)')
+        print(f'  {session.id} — skipped (empty mask or too few frames)')
         return
 
     MIN_VAR        = cfg['min_var']
@@ -580,6 +553,9 @@ def run_session(s: dict, sout: Path, cfg: dict) -> None:
     PATCH_SZ       = cfg.get('acf_patch_sizes', [5, 10, 15, 20, 25, 30])
     MODEL_PATCH_SZ = int(cfg.get('patch_lag_pca_ar_patch_size', 15))
     ROLL_WIN       = cfg.get('pearson_rolling_window', 20)
+
+    gmean = np.nanmean(fr[:, mask], axis=1)
+    gstd  = np.nanstd(fr[:, mask],  axis=1)
 
     varx  = np.nanvar(fr, axis=0).astype(np.float32)
     vard  = np.nanvar(np.diff(fr, axis=0), axis=0).astype(np.float32)
@@ -616,7 +592,7 @@ def run_session(s: dict, sout: Path, cfg: dict) -> None:
     r2_ceiling  = float(np.mean(corr_v ** 2))         if corr_v.size > 0  else np.nan
 
     pd.DataFrame([{
-        'session_id': s['session_id'],
+        'session_id': session.id,
         'rmse_floor': rmse_floor,
         'mean_varx':  mean_varx,
         'r2_ceiling': r2_ceiling,
@@ -632,7 +608,7 @@ def run_session(s: dict, sout: Path, cfg: dict) -> None:
     _fig6_rolling_mean_std(gmean, fps, sout, window=ROLL_WIN)
     _fig7_within_patch_residual_corr(fr, mask, MODEL_PATCH_SZ, sout)
 
-    print(f'  {s["session_id"]} → {sout}')
+    print(f'  {session.id} → {sout}')
 
 
 # ---------------------------------------------------------------------------
@@ -952,38 +928,37 @@ def main() -> None:
     pa.setdefault('acf_patch_sizes',             arcfg.get('acf_patch_sizes', [5, 10, 15, 20, 25, 30]))
     pa.setdefault('patch_lag_pca_ar_patch_size', arcfg.get('patch_lag_pca_ar_patch_size', 15))
 
-    EXCLUDED_SESSIONS = {'Se27072020', 'Se31012020'}
+    EXCLUDED_SESSIONS = set(arcfg.get('within_session_exclude', []))
 
     preproc_root     = repo_root / config['paths']['preprocessing']
     standardized_dir = preproc_root / 'secundo' / 'baseline_only_standardized'
+    mask_dir          = preproc_root / 'secundo' / 'tissue_masks'
 
-    nc_paths = sorted(
-        p for p in standardized_dir.glob(f"baseline_*_{CONDITION}_{STAGE_STANDARDIZED}.nc")
-        if not any(ex in p.stem for ex in EXCLUDED_SESSIONS)
-    )
-    assert nc_paths, f"No .nc session files found in {standardized_dir}"
-    print(f"Found {len(nc_paths)} sessions")
+    sessions = load_sessions(standardized_dir, mask_dir=mask_dir, exclude_ids=list(EXCLUDED_SESSIONS))
+    assert sessions, f"No sessions loaded from {standardized_dir}"
+    print(f"Found {len(sessions)} sessions")
 
-    sessions = _load_sessions([str(p) for p in nc_paths], pa)
+    MIN_VAR = pa['min_var']
+    masks = {s.id: _compute_analysis_mask(s, MIN_VAR) for s in sessions}
 
     OUT = repo_root / 'derivatives' / 'modeling' / 'signal_characterization' / 'secundo_29sessions'
     OUT.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame([{
-        'session_id':    s['session_id'],
-        'shape':         str(tuple(s['frames'].shape)),
-        'frame_rate_hz': float(s['frame_rate_hz']),
-        'mask_pixels':   int(s['mask'].sum()),
-        'mask_frac':     float(s['mask'].mean()),
+        'session_id':    s.id,
+        'shape':         str(tuple(s.frames.shape)),
+        'frame_rate_hz': float(s.fps),
+        'mask_pixels':   int(masks[s.id].sum()),
+        'mask_frac':     float(masks[s.id].mean()),
     } for s in sessions]).to_csv(OUT / 'session_summary.csv', index=False)
 
     print(f"Output root: {OUT}")
     print(f"Running {len(sessions)} sessions...")
 
     for s in sessions:
-        run_session(s, OUT / s['session_id'], pa)
+        run_session(s, masks[s.id], OUT / s.id, pa)
 
-    session_dirs = [OUT / s['session_id'] for s in sessions]
+    session_dirs = [OUT / s.id for s in sessions]
     print("Computing cross-session figures...")
     _figX_r2_ceiling_across_sessions(session_dirs, OUT)
     _figX_r2_spatial_consistency(session_dirs, OUT)

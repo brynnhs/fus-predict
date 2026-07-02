@@ -1,3 +1,22 @@
+"""
+scripts/preprocess.py
+----------------------
+Preprocessing pipeline entrypoint.
+
+Runs, per subject, the full preprocessing stage sequence:
+  1. Baseline (and optionally task) frame extraction with optional log10 transform
+  2. Geometry — reorientation and resizing
+  3. Temporal filtering (lowpass / highpass / amplitude clip)
+  4. Standardization (z-scoring)
+  5. Tissue segmentation (vessel vs parenchyma masks)
+
+Outputs are written under ``derivatives/preprocessing/<subject>/`` as
+described by each stage module; see fuspredict.preprocessing.* for details.
+
+Usage:
+  python scripts/preprocess.py
+"""
+
 from pathlib import Path
 
 from fuspredict.preprocessing.filters import filter_reoriented_sessions
@@ -12,15 +31,20 @@ from fuspredict.project import find_repo_root, load_project_config
 
 
 def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
-    # Glob all .nc outputs rather than using each stage's return value, which
-    # only includes files written in the current run (empty when overwrite=False)
+    """
+    List ``.nc`` files in ``directory``, optionally excluding session IDs.
+
+    Glob all ``.nc`` outputs rather than using each stage's return value,
+    which only includes files written in the current run (empty when
+    overwrite=False).
+    """
     paths = sorted(str(p) for p in Path(directory).glob("*.nc"))
     if exclude_ids:
         paths = [p for p in paths if not any(sid in Path(p).stem for sid in exclude_ids)]
     return paths
 
 
-def main():
+def main() -> None:
     repo_root = find_repo_root()
     config = load_project_config(repo_root)
 

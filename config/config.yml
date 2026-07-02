@@ -58,6 +58,7 @@ preprocessing:
     floor_percentile:  10.0
     clip_abs:          3.0
     smooth_kernel_sizes: []
+    causal:            true
     overwrite:         true
 
   tissue_segmentation:

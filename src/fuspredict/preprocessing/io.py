@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import glob
 import os
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -56,8 +57,6 @@ def sanitize_attrs(attrs: dict) -> dict:
       None  → "none"
       list  → comma-separated string  e.g. [1, 2, 3] → "1,2,3"
       other → unchanged (int, float, str, np scalar all fine)
-
-    When reading attrs back, use attr_bool() and attr_list() helpers.
     """
     out = {}
     for k, v in attrs.items():
@@ -70,20 +69,6 @@ def sanitize_attrs(attrs: dict) -> dict:
         else:
             out[k] = v
     return out
-
-
-def attr_bool(da: xr.DataArray | xr.Dataset, key: str, default: bool = False) -> bool:
-    """Read a bool attr that was stored as 'True'/'False' string."""
-    val = da.attrs.get(key, str(default))
-    return str(val).strip().lower() == "true"
-
-
-def attr_list(da: xr.DataArray | xr.Dataset, key: str, dtype=str) -> list:
-    """Read a list attr that was stored as a comma-separated string."""
-    val = da.attrs.get(key, "")
-    if not val or str(val).strip() == "":
-        return []
-    return [dtype(x.strip()) for x in str(val).split(",") if x.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -283,7 +268,10 @@ def extract_and_save_baseline(
         baseline_frames  = frames[baseline_mask]
 
         if baseline_frames.shape[0] == 0:
-            print(f"  {date_code}: no baseline frames found (label == {baseline_value})")
+            warnings.warn(
+                f"{date_code}: no baseline frames found (label == {baseline_value}); skipping.",
+                stacklevel=2,
+            )
             return None
 
         if apply_log10:
@@ -332,7 +320,10 @@ def extract_and_save_baseline(
         return str(out_path)
 
     except Exception as exc:
-        print(f"  Error processing {os.path.basename(fus_path)}: {exc}")
+        warnings.warn(
+            f"Skipping {os.path.basename(fus_path)}: {exc}",
+            stacklevel=2,
+        )
         return None
 
 
@@ -362,7 +353,10 @@ def process_all_baseline_files(
             if fallback:
                 label_path = fallback[0]
             else:
-                print(f"  No label file for {os.path.basename(fus_path)}, skipping")
+                warnings.warn(
+                    f"No label file for {os.path.basename(fus_path)}; skipping.",
+                    stacklevel=2,
+                )
                 continue
 
         out = extract_and_save_baseline(
@@ -443,7 +437,10 @@ def extract_and_save_task(
         task_labels  = labels_arr[task_mask]
 
         if task_frames.shape[0] == 0:
-            print(f"  {date_code}: no task frames found (all labels == {baseline_value})")
+            warnings.warn(
+                f"{date_code}: no task frames found (all labels == {baseline_value}); skipping.",
+                stacklevel=2,
+            )
             return None
 
         if apply_log10:
@@ -495,7 +492,10 @@ def extract_and_save_task(
         return str(out_path)
 
     except Exception as exc:
-        print(f"  Error processing {os.path.basename(fus_path)}: {exc}")
+        warnings.warn(
+            f"Skipping {os.path.basename(fus_path)}: {exc}",
+            stacklevel=2,
+        )
         return None
 
 
@@ -525,7 +525,10 @@ def process_all_task_files(
             if fallback:
                 label_path = fallback[0]
             else:
-                print(f"  No label file for {os.path.basename(fus_path)}, skipping")
+                warnings.warn(
+                    f"No label file for {os.path.basename(fus_path)}; skipping.",
+                    stacklevel=2,
+                )
                 continue
 
         out = extract_and_save_task(
