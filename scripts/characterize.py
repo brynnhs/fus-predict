@@ -940,7 +940,13 @@ def main() -> None:
     pa.setdefault('acf_patch_sizes',             arcfg.get('acf_patch_sizes', [5, 10, 15, 20, 25, 30]))
     pa.setdefault('patch_lag_pca_ar_patch_size', arcfg.get('patch_lag_pca_ar_patch_size', 15))
 
-    subject = config['subjects']['all'][0]
+    all_subjects = config['subjects']['all']
+    if len(all_subjects) != 1:
+        raise ValueError(
+            f"characterize.py supports exactly one subject; config lists {all_subjects}. "
+            "Run once per config or extend this script to loop over subjects."
+        )
+    subject = all_subjects[0]
     EXCLUDED_SESSIONS = set(
         arcfg.get(
             'within_session_exclude',
