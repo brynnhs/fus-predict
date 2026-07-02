@@ -34,7 +34,7 @@ from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
 from fuspredict.evaluation.benchmark import aggregate_results, run_benchmark
 from fuspredict.models.base import Predictor
-from fuspredict.models.convlstm import ConvLSTMPredictor
+from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss
 from fuspredict.models.pca_ar import FullFramePCAAR, PatchLagPCAAR
 from fuspredict.models.pixel_ar import PixelAR
 from fuspredict.models.rolling_mean import RollingMeanPredictor
@@ -48,6 +48,7 @@ ALL_MODEL_NAMES = [
     "full_frame_pca_ar",
     "patch_lag_pca_ar",
     "convlstm",
+    "convlstm_vessel_loss",
 ]
 
 
@@ -121,6 +122,7 @@ def build_predictor_factories(modeling_cfg: dict) -> dict[str, Callable[[], Pred
     full_frame_cfg = modeling_cfg["full_frame_pca_ar"]
     patch_lag_cfg = modeling_cfg["patch_lag_pca_ar"]
     convlstm_cfg = modeling_cfg["convlstm"]
+    convlstm_vessel_cfg = modeling_cfg.get("convlstm_vessel_loss", convlstm_cfg)
     pca_basis_cfg = modeling_cfg["pca_basis"]
 
     return {
@@ -151,6 +153,16 @@ def build_predictor_factories(modeling_cfg: dict) -> dict[str, Callable[[], Pred
             batch_size=convlstm_cfg["batch_size"],
             n_epochs=convlstm_cfg["n_epochs"],
             grad_clip_norm=convlstm_cfg["grad_clip_norm"],
+            seed=pca_basis_cfg["seed"],
+        ),
+        "convlstm_vessel_loss": lambda: ConvLSTMVesselLoss(
+            hidden_channels=convlstm_vessel_cfg["hidden_channels"],
+            kernel_size=convlstm_vessel_cfg["kernel_size"],
+            lag=n_lags,
+            lr=convlstm_vessel_cfg["learning_rate"],
+            batch_size=convlstm_vessel_cfg["batch_size"],
+            n_epochs=convlstm_vessel_cfg["n_epochs"],
+            grad_clip_norm=convlstm_vessel_cfg["grad_clip_norm"],
             seed=pca_basis_cfg["seed"],
         ),
     }

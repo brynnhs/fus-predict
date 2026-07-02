@@ -247,6 +247,7 @@ class ConvLSTMPredictor:
         self.grad_clip_norm = grad_clip_norm
         self.seed = seed
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"ConvLSTM running on: {self.device}")
         self._params: dict[int, dict] = {}
 
     def _build_windows(
@@ -302,6 +303,7 @@ class ConvLSTMPredictor:
         self,
         train_frames: list[np.ndarray],
         horizons: list[int],
+        vessel_mask: np.ndarray | None = None,
     ) -> None:
         """
         Train one ConvLSTM model per horizon via MSE loss and Adam.
@@ -312,9 +314,15 @@ class ConvLSTMPredictor:
             One array per session, each of shape ``(T, H, W)``.
         horizons : list of int
             Prediction horizons to fit.
+        vessel_mask : np.ndarray or None, shape (H, W)
+            Boolean mask. If provided, loss is computed only over vessel pixels.
         """
         if not train_frames:
             raise ValueError("train_frames must contain at least one session")
+
+        mask_t: torch.Tensor | None = None
+        if vessel_mask is not None:
+            mask_t = torch.from_numpy(vessel_mask.astype(np.float32)).to(self.device)
 
         for horizon in horizons:
             torch.manual_seed(self.seed)
@@ -328,7 +336,6 @@ class ConvLSTMPredictor:
                 kernel_size=self.kernel_size,
             ).to(self.device)
             optimizer = torch.optim.Adam(model.parameters(), lr=self.lr)
-            loss_fn = nn.MSELoss()
 
             model.train()
             for _ in range(self.n_epochs):
@@ -340,7 +347,10 @@ class ConvLSTMPredictor:
 
                     optimizer.zero_grad()
                     pred = model(xb)
-                    loss = loss_fn(pred, yb)
+                    if mask_t is not None:
+                        loss = ((pred - yb) ** 2 * mask_t).sum() / mask_t.sum()
+                    else:
+                        loss = nn.functional.mse_loss(pred, yb)
                     loss.backward()
                     nn.utils.clip_grad_norm_(model.parameters(), self.grad_clip_norm)
                     optimizer.step()
@@ -385,4 +395,36 @@ class ConvLSTMPredictor:
             f"kernel_size={self.kernel_size}, lag={self.lag}, lr={self.lr}, "
             f"batch_size={self.batch_size}, n_epochs={self.n_epochs}, "
             f"grad_clip_norm={self.grad_clip_norm}, seed={self.seed})"
+        )
+
+
+class ConvLSTMVesselLoss(ConvLSTMPredictor):
+    """
+    ConvLSTM variant that restricts training loss to vessel pixels only.
+
+    Identical to ConvLSTMPredictor in all hyperparameters. The vessel_mask
+    must be supplied via ``set_vessel_mask`` before calling ``fit``; if no
+    mask is set it falls back to standard full-image MSE.
+    """
+
+    name: str = "convlstm_vessel_loss"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._vessel_mask: np.ndarray | None = None
+
+    def set_vessel_mask(self, mask: np.ndarray) -> None:
+        """Set the (H, W) boolean vessel mask used during training."""
+        self._vessel_mask = mask
+
+    def fit(
+        self,
+        train_frames: list[np.ndarray],
+        horizons: list[int],
+        vessel_mask: np.ndarray | None = None,
+    ) -> None:
+        super().fit(
+            train_frames,
+            horizons,
+            vessel_mask=vessel_mask if vessel_mask is not None else self._vessel_mask,
         )
