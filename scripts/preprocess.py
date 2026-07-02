@@ -15,19 +15,32 @@ described by each stage module; see fuspredict.preprocessing.* for details.
 
 Usage:
   python scripts/preprocess.py
+  python scripts/preprocess.py --config config_mouse.yml
 """
 
+import argparse
 from pathlib import Path
 
 from fuspredict.preprocessing.filters import filter_reoriented_sessions
 from fuspredict.preprocessing.geometry import reorient_baseline_sessions
 from fuspredict.preprocessing.io import (
     process_all_baseline_files,
+    process_all_baseline_files_mouse,
     process_all_task_files,
 )
 from fuspredict.preprocessing.standardization import standardize_stage_sessions
 from fuspredict.preprocessing.tissue_masks import segment_all_sessions
 from fuspredict.project import find_repo_root, load_project_config
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the fUS preprocessing pipeline.")
+    parser.add_argument(
+        "--config",
+        default="config.yml",
+        help="Config filename inside config/ (default: config.yml).",
+    )
+    return parser.parse_args()
 
 
 def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
@@ -45,12 +58,14 @@ def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
 
 
 def main() -> None:
+    args = parse_args()
     repo_root = find_repo_root()
-    config = load_project_config(repo_root)
+    config = load_project_config(repo_root, config_name=args.config)
 
     deriv_root  = repo_root / config["paths"]["preprocessing"]
     source_root = repo_root / config["paths"]["sourcedata"]
     subjects    = config["subjects"]["all"]
+    species     = config["subjects"].get("species", "monkey")
 
     base_cfg   = config["preprocessing"]["baseline"]
     geo_cfg    = config["preprocessing"]["geometry"]
@@ -61,32 +76,49 @@ def main() -> None:
     APPLY_LOG10 = base_cfg["apply_log10"]
     dir_suffix  = "" if APPLY_LOG10 else "_nolog"
 
-    SUBJECT  = "secundo"  # set to None to run all subjects
-    subjects = [SUBJECT] if SUBJECT else subjects
-
     for subject in subjects:
         subj_deriv  = deriv_root / subject
-        subj_source = source_root / subject
-        flip_ids     = set(geo_cfg["flip_session_ids_by_subject"].get(subject, []))
-        exclude_ids  = set(config["subjects"].get("sessions_to_exclude", {}).get(subject, []))
+        exclude_ids = set(config["subjects"].get("sessions_to_exclude", {}).get(subject, []))
 
-        print(f"\n=== Processing subject {subject} ===")
+        print(f"\n=== Processing subject {subject} (species={species}) ===")
 
-        # Stage 1 — Baseline extraction and optional log10 transform
+        # Stage 1 — Baseline extraction
         baseline_dir = subj_deriv / f"baseline_only{dir_suffix}"
-        process_all_baseline_files(
-            str(subj_source),
-            str(baseline_dir),
-            overwrite=base_cfg["overwrite"],
-            apply_log10=APPLY_LOG10,
-            log10_eps=base_cfg["log10_eps"],
-            exclude_ids=exclude_ids,
-        )
+
+        if species == "mouse":
+            # Mouse: read .source.scan HDF5 files; stimulus timing from Excel
+            subj_source = source_root / "mouse"
+            excel_path  = repo_root / config["subjects"].get(
+                "excel_metadata",
+                "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
+            )
+            process_all_baseline_files_mouse(
+                data_directory=str(subj_source),
+                output_dir=str(baseline_dir),
+                excel_path=str(excel_path),
+                overwrite=base_cfg["overwrite"],
+                apply_log10=APPLY_LOG10,
+                log10_eps=base_cfg["log10_eps"],
+                exclude_ids=exclude_ids,
+            )
+        else:
+            # Monkey: read Datas_*.mat + Label_pauses_*.mat files
+            subj_source = source_root / subject
+            flip_ids    = set(geo_cfg["flip_session_ids_by_subject"].get(subject, []))
+            process_all_baseline_files(
+                str(subj_source),
+                str(baseline_dir),
+                overwrite=base_cfg["overwrite"],
+                apply_log10=APPLY_LOG10,
+                log10_eps=base_cfg["log10_eps"],
+                exclude_ids=exclude_ids,
+            )
+
         baseline_paths = list_nc(baseline_dir, exclude_ids)
         print(f"  Baseline sessions: {len(baseline_paths)}")
 
-        # Stage 1b — Task (non-baseline) extraction and optional log10 transform
-        if config["preprocessing"]["run_task_frames"]:
+        # Stage 1b — Task extraction (monkey only; mouse has no separate task frames)
+        if config["preprocessing"].get("run_task_frames", False) and species != "mouse":
             task_dir = subj_deriv / f"task_only{dir_suffix}"
             process_all_task_files(
                 str(subj_source),
@@ -124,6 +156,11 @@ def main() -> None:
             )
             print(f"  Task standardized: {len(list_nc(task_std_dir))}")
 
+        # For geometry stage, flip_ids is monkey-only; mouse has no per-session flips
+        flip_ids = set() if species == "mouse" else set(
+            geo_cfg["flip_session_ids_by_subject"].get(subject, [])
+        )
+
         # Stage 2 — Reorient and resize baseline sessions
         reoriented_dir = subj_deriv / f"baseline_only_reoriented_resized{dir_suffix}"
         reorient_baseline_sessions(
@@ -159,8 +196,6 @@ def main() -> None:
         print(f"  Filtered sessions: {len(filtered_paths)}")
 
         # Stage 4 — Standardization
-        # Reoriented and filtered sessions passed together; the function uses
-        # the stage attr in each file to assign the unfiltered/filtered label.
         std_dir = subj_deriv / f"baseline_only_standardized{dir_suffix}"
         standardize_stage_sessions(
             reoriented_paths + filtered_paths,
