@@ -9,3 +9,4 @@ src/fuspredict.egg-info/dependency_links.txt
 /src/fuspredict.egg-info
 *__pycache__
 *__init__.py
+*.lock

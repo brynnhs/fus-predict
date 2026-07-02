@@ -73,7 +73,6 @@ preprocessing:
 persistence_analysis:
   min_var:               1.0e-6
   fps_fallback:          2.5
-  pixels_per_group:      4
   max_acf_lag:           20
   example_target_frame:  10
   pearson_rolling_window: 20
