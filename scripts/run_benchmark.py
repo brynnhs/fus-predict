@@ -224,7 +224,13 @@ def main() -> None:
     modeling_cfg = config["modeling"]
     ar_cfg = config["ar_analysis"]
 
-    subject = config["subjects"]["all"][0]
+    all_subjects = config["subjects"]["all"]
+    if len(all_subjects) != 1:
+        raise ValueError(
+            f"run_benchmark.py supports exactly one subject; config lists {all_subjects}. "
+            "Run once per config or extend this script to loop over subjects."
+        )
+    subject = all_subjects[0]
     standardized_dir = repo_root / config["paths"]["preprocessing"] / subject / "baseline_only_standardized"
     mask_dir = repo_root / config["paths"]["preprocessing"] / subject / "tissue_masks"
     benchmark_dir = repo_root / config["paths"]["modeling"] / "benchmark"
