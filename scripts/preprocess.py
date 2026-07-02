@@ -82,12 +82,18 @@ def main() -> None:
 
         print(f"\n=== Processing subject {subject} (species={species}) ===")
 
+        # flip_ids applies to monkey geometry; always computed so it's available
+        # for both the task-reorientation block and the main geometry stage
+        flip_ids    = set() if species == "mouse" else set(
+            geo_cfg["flip_session_ids_by_subject"].get(subject, [])
+        )
+        subj_source = source_root / ("mouse" if species == "mouse" else subject)
+
         # Stage 1 — Baseline extraction
         baseline_dir = subj_deriv / f"baseline_only{dir_suffix}"
 
         if species == "mouse":
             # Mouse: read .source.scan HDF5 files; stimulus timing from Excel
-            subj_source = source_root / "mouse"
             excel_path  = repo_root / config["subjects"].get(
                 "excel_metadata",
                 "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
@@ -103,8 +109,6 @@ def main() -> None:
             )
         else:
             # Monkey: read Datas_*.mat + Label_pauses_*.mat files
-            subj_source = source_root / subject
-            flip_ids    = set(geo_cfg["flip_session_ids_by_subject"].get(subject, []))
             process_all_baseline_files(
                 str(subj_source),
                 str(baseline_dir),
@@ -155,11 +159,6 @@ def main() -> None:
                 overwrite=std_cfg["overwrite"],
             )
             print(f"  Task standardized: {len(list_nc(task_std_dir))}")
-
-        # For geometry stage, flip_ids is monkey-only; mouse has no per-session flips
-        flip_ids = set() if species == "mouse" else set(
-            geo_cfg["flip_session_ids_by_subject"].get(subject, [])
-        )
 
         # Stage 2 — Reorient and resize baseline sessions
         reoriented_dir = subj_deriv / f"baseline_only_reoriented_resized{dir_suffix}"
