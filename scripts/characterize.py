@@ -558,6 +558,8 @@ def run_session(session: Session, mask: np.ndarray, sout: Path, cfg: dict) -> No
     gmean = np.nanmean(fr[:, mask], axis=1)
     gstd  = np.nanstd(fr[:, mask],  axis=1)
 
+    SUMMARY_LAGS = cfg.get('summary_lags', [5, 10, 20])
+
     varx  = np.nanvar(fr, axis=0).astype(np.float32)
     vard  = np.nanvar(np.diff(fr, axis=0), axis=0).astype(np.float32)
     ratio = np.divide(vard, varx,
@@ -567,6 +569,21 @@ def run_session(session: Session, mask: np.ndarray, sout: Path, cfg: dict) -> No
     corr    = np.asarray(corr, np.float32)
     for a in [varx, vard, ratio, corr]:
         a[~mask] = np.nan
+
+    for lag_k in SUMMARY_LAGS:
+        if lag_k < 2 or lag_k >= fr.shape[0]:
+            continue
+        diff_k = fr[lag_k:] - fr[:-lag_k]
+        vard_k = np.nanvar(diff_k, axis=0).astype(np.float32)
+        ratio_k = np.divide(vard_k, varx,
+                            out=np.full_like(vard_k, np.nan),
+                            where=varx > MIN_VAR)
+        corr_k, _ = safe_temporal_corr_map(fr[:-lag_k], fr[lag_k:])
+        corr_k = np.asarray(corr_k, np.float32)
+        ratio_k[~mask] = np.nan
+        corr_k[~mask]  = np.nan
+        np.save(sout / f'ratio_map_lag{lag_k}.npy', ratio_k)
+        np.save(sout / f'corr_map_lag{lag_k}.npy',  corr_k)
 
     lg_mean, av_mean = safe_standardized_acf(gmean, MAX_LAG)
 
@@ -1032,6 +1049,38 @@ def main() -> None:
             'max':          float(vals.max()),
             'range':        float(vals.max() - vals.min()),
         })
+
+    summary_lags = pa.get('summary_lags', [5, 10, 20])
+    for lag_k in summary_lags:
+        for metric, fname in [('acf', f'corr_map_lag{lag_k}.npy'),
+                               ('var_ratio', f'ratio_map_lag{lag_k}.npy')]:
+            per_session_medians = []
+            for sd in session_dirs:
+                fpath     = sd / fname
+                mask_path = sd / 'mask.npy'
+                if not (fpath.exists() and mask_path.exists()):
+                    continue
+                arr  = np.load(fpath)
+                msk  = np.load(mask_path).astype(bool)
+                vals = arr[msk]
+                vals = vals[np.isfinite(vals)]
+                if vals.size > 0:
+                    per_session_medians.append(float(np.median(vals)))
+            if not per_session_medians:
+                continue
+            v = np.array(per_session_medians)
+            rows.append({
+                'metric':       f'lag{lag_k}_{metric}',
+                'n_sessions':   int(len(v)),
+                'grand_median': float(np.median(v)),
+                'q25':          float(np.percentile(v, 25)),
+                'q75':          float(np.percentile(v, 75)),
+                'iqr':          float(np.percentile(v, 75) - np.percentile(v, 25)),
+                'min':          float(v.min()),
+                'max':          float(v.max()),
+                'range':        float(v.max() - v.min()),
+            })
+
     if rows:
         summary = pd.DataFrame(rows)
         summary.to_csv(OUT / 'grand_summary_statistics.csv', index=False)
