@@ -103,19 +103,29 @@ def _add_scale_bar(ax, pixel_size_mm: float = 0.1, bar_mm: float = 1.0,
 
 
 def _patch_mean_acf(frames: np.ndarray, patch_radius: int, max_lag: int) -> np.ndarray:
-    """Return (P, max_lag) ACF matrix for each patch's mean time series."""
+    """Return (P, max_lag) ACF matrix for each patch's mean time series.
+
+    patch_radius=0 is a special case that iterates individual pixels rather
+    than using tile_patches (which has a minimum patch size of 2×2).
+    """
     T, H, W = frames.shape
-    patches = PatchLagPCAAR.tile_patches(H, W, patch_radius)
-    acfs = []
-    for rs, cs in patches:
-        ts = frames[:, rs, cs].mean(axis=(1, 2))
+
+    def _acf_row(ts: np.ndarray) -> list[float]:
         ts = ts - ts.mean()
         c0 = np.dot(ts, ts)
-        row = [
+        return [
             float(np.dot(ts[lag:], ts[:-lag]) / c0) if c0 > 0 else 0.0
             for lag in range(1, max_lag + 1)
         ]
-        acfs.append(row)
+
+    if patch_radius == 0:
+        # True single-pixel ACF
+        acfs = [_acf_row(frames[:, r, c])
+                for r in range(H) for c in range(W)]
+    else:
+        patches = PatchLagPCAAR.tile_patches(H, W, patch_radius)
+        acfs = [_acf_row(frames[:, rs, cs].mean(axis=(1, 2))) for rs, cs in patches]
+
     return np.array(acfs)
 
 
@@ -366,7 +376,7 @@ def _fig5_patch_acf_sweep(fr, mask, patch_sizes, frame_rate_hz, sout, max_lag: i
         axes = [axes]
 
     for ax, ps in zip(axes, patch_sizes):
-        pr      = max(1, ps // 2)
+        pr      = 0 if ps == 1 else ps // 2
         acf_mat = _patch_mean_acf(frames, pr, max_lag)
         med     = np.median(acf_mat, axis=0)
         p25     = np.percentile(acf_mat, 25, axis=0)
