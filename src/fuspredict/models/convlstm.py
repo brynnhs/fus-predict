@@ -280,9 +280,12 @@ class ConvLSTMPredictor:
             n_samples = T - p - horizon + 1
             if n_samples <= 0:
                 continue
-            windows = np.stack(
-                [frames[i : i + p] for i in range(n_samples)], axis=0
-            )  # (n_samples, p, H, W)
+            # sliding_window_view returns a view (no copy) of shape (n_samples, H, W, p);
+            # transpose to (n_samples, p, H, W) and copy once for contiguity.
+            windows = np.lib.stride_tricks.sliding_window_view(
+                frames, window_shape=p, axis=0
+            )[:n_samples]  # (n_samples, H, W, p)
+            windows = windows.transpose(0, 3, 1, 2)  # (n_samples, p, H, W)
             targets = frames[p - 1 + horizon : p - 1 + horizon + n_samples]
             X_list.append(windows)
             Y_list.append(targets)
@@ -388,6 +391,35 @@ class ConvLSTMPredictor:
             pred = model(x)  # (1, 1, H, W)
 
         return pred[0, 0].cpu().numpy().astype(np.float32)
+
+    def predict_batch(self, contexts: np.ndarray, horizon: int) -> np.ndarray:
+        """
+        Predict frames for a batch of context windows in a single forward pass.
+
+        Parameters
+        ----------
+        contexts : np.ndarray, shape (N, lag, H, W)
+            Batch of context windows (already trimmed to ``lag`` frames each).
+        horizon : int
+            Prediction horizon. Must be a key in ``self._params``.
+
+        Returns
+        -------
+        np.ndarray, shape (N, H, W), dtype float32
+            Predicted frames.
+        """
+        if horizon not in self._params:
+            raise KeyError(f"horizon {horizon} was not fitted")
+
+        model = self._params[horizon]["model"]
+        x = torch.from_numpy(contexts.astype(np.float32)).unsqueeze(2)  # (N, lag, 1, H, W)
+        model.eval()
+        results = []
+        with torch.no_grad():
+            for start in range(0, x.shape[0], self.batch_size):
+                xb = x[start : start + self.batch_size].to(self.device)
+                results.append(model(xb).cpu())
+        return torch.cat(results, dim=0)[:, 0].numpy().astype(np.float32)
 
     def __repr__(self) -> str:
         return (
