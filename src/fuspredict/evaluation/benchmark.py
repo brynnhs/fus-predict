@@ -22,7 +22,7 @@ import pandas as pd
 from fuspredict.data.session import Session
 from fuspredict.evaluation.stats import rmse
 from fuspredict.models.base import Predictor, split_frames
-from fuspredict.models.convlstm import ConvLSTMVesselLoss
+from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss
 
 
 # ---------------------------------------------------------------------------
@@ -159,10 +159,14 @@ def evaluate_predictor(
                 if not windows:
                     continue
 
-                preds = np.stack(
-                    [predictor.predict(context, horizon) for context, _ in windows]
-                )
                 targets = np.stack([target for _, target in windows])
+                if isinstance(predictor, ConvLSTMPredictor):
+                    contexts = np.stack([ctx for ctx, _ in windows])  # (N, lag, H, W)
+                    preds = predictor.predict_batch(contexts, horizon)
+                else:
+                    preds = np.stack(
+                        [predictor.predict(context, horizon) for context, _ in windows]
+                    )
                 zero_preds = np.zeros_like(targets)
 
                 rmse_full = _rmse(preds, targets)
