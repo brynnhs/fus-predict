@@ -32,11 +32,12 @@ from fuspredict.analysis.active_period import (
     baseline_roi_stats,
     roi_signal,
     sigma_crossings,
-    to_pct_cbv,
+    zscore_frames,
 )
 from fuspredict.analysis.active_period_plots import (
     fig_activation_delta,
     fig_roi_timeseries,
+    fig_transition_analysis,
 )
 from fuspredict.data.loading import load_session
 from fuspredict.project import find_repo_root, load_project_config
@@ -47,7 +48,7 @@ from fuspredict.project import find_repo_root, load_project_config
 
 AUTO_ROI_N_PIXELS = 125
 DELTA_WINDOW      = 20   # task frames averaged for activation delta
-TIMESERIES_WINDOW = 30.0 # seconds shown in time-series figure
+TIMESERIES_WINDOW = 15.0 # seconds shown before and after onset
 
 
 # ---------------------------------------------------------------------------
@@ -157,16 +158,19 @@ def main() -> None:
                 print(f"  {session.id}: ROI selection failed ({exc}) — skipping")
                 continue
 
-            # % CBV conversion and ROI signal
-            task_pct  = to_pct_cbv(task_frames, mean_map)
-            signal    = roi_signal(task_pct, roi_mask)
+            # Z-score task frames using baseline stats and compute ROI signal
+            task_z = zscore_frames(task_frames, mean_map, std_map)
+            signal = roi_signal(task_z, roi_mask)
 
-            # Baseline σ stats and crossing times
-            bl_mean, bl_std = baseline_roi_stats(mean_map, std_map, roi_mask)
+            # Pre-onset signal from the end of the z-scored baseline frames
+            pre_signal = roi_signal(session.frames, roi_mask)
+
+            # Baseline σ stats and crossing times (empirical from baseline z-scored frames)
+            bl_mean, bl_std = baseline_roi_stats(mean_map, std_map, roi_mask, session.frames)
             crossings       = sigma_crossings(signal, bl_mean, bl_std, session.fps)
 
             print(f"    ROI: {roi_mask.sum()} px | "
-                  f"baseline σ={bl_std:.2f}% CBV")
+                  f"baseline σ={bl_std:.2f}σ")
             for n, t in crossings.items():
                 t_str = f"{t:.2f} s" if t is not None else "—"
                 print(f"    +{n}σ crossing: {t_str}")
@@ -186,6 +190,25 @@ def main() -> None:
                 signal, bl_mean, bl_std, session.fps, session.id,
                 out_path=out_dir / "roi_timeseries.png",
                 window_s=TIMESERIES_WINDOW,
+                pre_signal=pre_signal,
+            )
+
+            # Dizeux-style transition analysis
+            ckpt_path = (
+                repo_root / "derivatives" / "modeling" / "convlstm" / "unweighted"
+                / session.id / "h1" / "model.pt"
+            )
+            baseline_log10 = session.frames * std_map[None] + mean_map[None]
+            fig_transition_analysis(
+                baseline_frames_log10=baseline_log10,
+                task_frames_log10=task_frames,
+                roi_mask=roi_mask,
+                mean_map=mean_map,
+                std_map=std_map,
+                fps=session.fps,
+                session_id=session.id,
+                out_path=out_dir / "transition_analysis.png",
+                checkpoint_path=ckpt_path if ckpt_path.exists() else None,
             )
             print(f"    Saved -> {out_dir.relative_to(repo_root)}/")
 
