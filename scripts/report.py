@@ -100,6 +100,11 @@ def parse_args(default_session_id: str) -> argparse.Namespace:
         help="Skip the prediction-dependent spatial figures "
         "(requires --save-predictions to have been used during run_benchmark.py).",
     )
+    parser.add_argument(
+        "--config",
+        default="config.yml",
+        help="Config filename inside config/ (default: config.yml).",
+    )
     return parser.parse_args()
 
 
