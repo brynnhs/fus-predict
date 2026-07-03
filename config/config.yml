@@ -41,7 +41,7 @@ preprocessing:
       secundo: [Se04092020, Se01092020, Se25082020, Se03092020, Se27082020, Se04082020, Se24022020]
 
   filtering:
-    enable_lowpass:     true
+    enable_lowpass:     false
     lowpass_cutoff_hz:  0.5
     lowpass_order:      4
     enable_highpass:    false
