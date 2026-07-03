@@ -34,7 +34,7 @@ from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
 from fuspredict.evaluation.benchmark import aggregate_results, run_benchmark
 from fuspredict.models.base import Predictor
-from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss
+from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss, ConvLSTMVesselMaskedInput, ConvLSTMPCADenoised
 from fuspredict.models.pca_ar import FullFramePCAAR, PatchLagPCAAR
 from fuspredict.models.pixel_ar import PixelAR
 from fuspredict.models.rolling_mean import RollingMeanPredictor
@@ -49,6 +49,8 @@ ALL_MODEL_NAMES = [
     "patch_lag_pca_ar",
     "convlstm",
     "convlstm_vessel_loss",
+    "convlstm_vessel_masked_input",
+    "convlstm_pca_denoised",
 ]
 
 
@@ -128,6 +130,8 @@ def build_predictor_factories(modeling_cfg: dict) -> dict[str, Callable[[], Pred
     patch_lag_cfg = modeling_cfg["patch_lag_pca_ar"]
     convlstm_cfg = modeling_cfg["convlstm"]
     convlstm_vessel_cfg = modeling_cfg.get("convlstm_vessel_loss", convlstm_cfg)
+    convlstm_masked_cfg = modeling_cfg.get("convlstm_vessel_masked_input", convlstm_cfg)
+    convlstm_pca_cfg = modeling_cfg.get("convlstm_pca_denoised", convlstm_cfg)
     pca_basis_cfg = modeling_cfg["pca_basis"]
 
     return {
@@ -168,6 +172,27 @@ def build_predictor_factories(modeling_cfg: dict) -> dict[str, Callable[[], Pred
             batch_size=convlstm_vessel_cfg["batch_size"],
             n_epochs=convlstm_vessel_cfg["n_epochs"],
             grad_clip_norm=convlstm_vessel_cfg["grad_clip_norm"],
+            seed=pca_basis_cfg["seed"],
+        ),
+        "convlstm_vessel_masked_input": lambda: ConvLSTMVesselMaskedInput(
+            hidden_channels=convlstm_masked_cfg["hidden_channels"],
+            kernel_size=convlstm_masked_cfg["kernel_size"],
+            lag=n_lags,
+            lr=convlstm_masked_cfg["learning_rate"],
+            batch_size=convlstm_masked_cfg["batch_size"],
+            n_epochs=convlstm_masked_cfg["n_epochs"],
+            grad_clip_norm=convlstm_masked_cfg["grad_clip_norm"],
+            seed=pca_basis_cfg["seed"],
+        ),
+        "convlstm_pca_denoised": lambda: ConvLSTMPCADenoised(
+            n_components=convlstm_pca_cfg.get("n_components", 20),
+            hidden_channels=convlstm_pca_cfg["hidden_channels"],
+            kernel_size=convlstm_pca_cfg["kernel_size"],
+            lag=n_lags,
+            lr=convlstm_pca_cfg["learning_rate"],
+            batch_size=convlstm_pca_cfg["batch_size"],
+            n_epochs=convlstm_pca_cfg["n_epochs"],
+            grad_clip_norm=convlstm_pca_cfg["grad_clip_norm"],
             seed=pca_basis_cfg["seed"],
         ),
     }
