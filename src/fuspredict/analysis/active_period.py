@@ -14,30 +14,37 @@ import scipy.ndimage
 
 
 # ---------------------------------------------------------------------------
-# % CBV conversion
+# Z-score standardization
 # ---------------------------------------------------------------------------
 
-def to_pct_cbv(
+_ZSCORE_EPS = 1e-8
+
+
+def zscore_frames(
     frames_log10: np.ndarray,
     baseline_mean_map: np.ndarray,
+    baseline_std_map: np.ndarray,
 ) -> np.ndarray:
-    """Convert log10 frames to % CBV relative to a pixel-wise baseline mean.
+    """Z-score task frames using per-pixel baseline mean and std.
 
     Parameters
     ----------
     frames_log10 : np.ndarray, shape (T, H, W)
         Log10-transformed Power Doppler frames.
     baseline_mean_map : np.ndarray, shape (H, W)
-        Per-pixel mean of log10 baseline frames (from standardized .nc mean_map).
+        Per-pixel baseline log10 mean (from standardized .nc mean_map).
+    baseline_std_map : np.ndarray, shape (H, W)
+        Per-pixel baseline log10 std (from standardized .nc std_map).
 
     Returns
     -------
     np.ndarray, shape (T, H, W), float32
-        Frames expressed as percent change from baseline power.
+        Frames in z-score units relative to baseline.
     """
-    linear       = np.power(10.0, frames_log10.astype(np.float32))
-    baseline_lin = np.power(10.0, baseline_mean_map.astype(np.float32))
-    return ((linear / baseline_lin[None]) - 1.0) * 100.0
+    arr   = frames_log10.astype(np.float32)
+    mean  = baseline_mean_map.astype(np.float32)
+    scale = np.where(baseline_std_map > _ZSCORE_EPS, baseline_std_map, _ZSCORE_EPS).astype(np.float32)
+    return (arr - mean[None]) / scale[None]
 
 
 # ---------------------------------------------------------------------------
@@ -120,19 +127,19 @@ def auto_roi(delta_map: np.ndarray, n_pixels: int = 125) -> np.ndarray:
 # ROI signal and baseline statistics
 # ---------------------------------------------------------------------------
 
-def roi_signal(frames_pct: np.ndarray, roi_mask: np.ndarray) -> np.ndarray:
-    """Per-frame mean % CBV over ROI pixels.
+def roi_signal(frames_z: np.ndarray, roi_mask: np.ndarray) -> np.ndarray:
+    """Per-frame mean z-score over ROI pixels.
 
     Parameters
     ----------
-    frames_pct : np.ndarray, shape (T, H, W)
+    frames_z : np.ndarray, shape (T, H, W)
     roi_mask : np.ndarray, shape (H, W), bool
 
     Returns
     -------
     np.ndarray, shape (T,), float32
     """
-    flat = frames_pct.reshape(frames_pct.shape[0], -1)
+    flat = frames_z.reshape(frames_z.shape[0], -1)
     return flat[:, roi_mask.ravel()].mean(axis=1).astype(np.float32)
 
 
@@ -140,34 +147,38 @@ def baseline_roi_stats(
     baseline_mean_map: np.ndarray,
     baseline_std_map: np.ndarray,
     roi_mask: np.ndarray,
+    baseline_frames_z: np.ndarray | None = None,
 ) -> tuple[float, float]:
-    """Compute baseline mean and std of the ROI-averaged % CBV signal.
+    """Empirical mean and std of the ROI-averaged z-score signal over baseline frames.
 
-    Because % CBV is defined as (linear / baseline_linear - 1) * 100,
-    the baseline mean in % CBV is 0 by construction. The std is derived
-    from the pixel-wise baseline std_map propagated through the same
-    log10 → linear → % CBV transform linearised around the mean.
-
-    In practice we approximate: std_pct ≈ mean over ROI of
-    (10^std_map - 1) * 100, which is the per-pixel 1-sigma excursion
-    in % CBV units averaged over the ROI.
+    Averaging over ROI pixels reduces variance by ~1/sqrt(N_roi), so the
+    effective std of the ROI-mean signal is much less than 1.0. This function
+    computes it empirically from the actual baseline z-scored frames so that
+    sigma_crossings thresholds reflect real baseline variability.
 
     Parameters
     ----------
     baseline_mean_map : np.ndarray, shape (H, W)
-        Per-pixel log10 baseline mean (from standardized .nc mean_map).
+        Unused; kept for API compatibility.
     baseline_std_map : np.ndarray, shape (H, W)
-        Per-pixel log10 baseline std (from standardized .nc std_map).
+        Unused; kept for API compatibility.
     roi_mask : np.ndarray, shape (H, W), bool
+    baseline_frames_z : np.ndarray, shape (T, H, W), optional
+        Z-scored baseline frames. If provided, mean and std are computed
+        empirically from the ROI-averaged signal over these frames.
+        If None, falls back to (0.0, 1/sqrt(roi_mask.sum())).
 
     Returns
     -------
-    (mean_pct, std_pct) : (float, float)
-        Baseline mean (≈ 0) and std in % CBV units.
+    (mean, std) : (float, float)
+        Empirical baseline mean and std of the ROI-averaged z-score signal.
     """
-    roi_std_log = baseline_std_map[roi_mask].astype(np.float32)
-    std_pct     = float((np.power(10.0, roi_std_log) - 1.0).mean() * 100.0)
-    return 0.0, std_pct
+    if baseline_frames_z is not None and baseline_frames_z.shape[0] > 1:
+        bl_signal = roi_signal(baseline_frames_z, roi_mask)
+        return float(bl_signal.mean()), float(bl_signal.std())
+    # Theoretical fallback: ROI averaging reduces std by 1/sqrt(N)
+    n_roi = max(int(roi_mask.sum()), 1)
+    return 0.0, 1.0 / float(np.sqrt(n_roi))
 
 
 # ---------------------------------------------------------------------------
