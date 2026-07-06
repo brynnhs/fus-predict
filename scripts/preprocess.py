@@ -253,6 +253,7 @@ def main() -> None:
                 baseline_std_dir=baseline_std_dir,
                 out_dir=task_std_dir,
                 clip_abs=std_cfg["clip_abs"],
+                smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
                 overwrite=std_cfg["overwrite"],
             )
             print(f"  Active standardized: {len(list_nc(task_std_dir))} sessions")
