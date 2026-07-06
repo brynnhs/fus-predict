@@ -134,13 +134,15 @@ def load_sessions(
     standardized_dir: str | Path,
     mask_dir: str | Path | None = None,
     exclude_ids: list[str] | None = None,
+    glob_pattern: str | None = None,
 ) -> list[Session]:
     """
     Load all standardized sessions from a directory.
 
-    Discovers files matching ``baseline_*_unfiltered_standardized_zscore.nc``,
-    loads each one, and returns the successful results. Sessions that fail to
-    load emit a warning and are skipped rather than raising an exception.
+    Discovers files matching ``baseline_*_unfiltered_standardized_zscore.nc``
+    (or a custom ``glob_pattern``), loads each one, and returns the successful
+    results. Sessions that fail to load emit a warning and are skipped rather
+    than raising an exception.
 
     Parameters
     ----------
@@ -150,6 +152,9 @@ def load_sessions(
         Directory containing tissue mask files. Passed to :func:`load_session`.
     exclude_ids : list of str or None
         Session IDs to skip entirely (e.g. sessions with known quality issues).
+    glob_pattern : str or None
+        Override the default glob pattern used to discover ``.nc`` files.
+        Useful for loading task frames (``task_*_unfiltered_standardized_zscore.nc``).
 
     Returns
     -------
@@ -162,10 +167,11 @@ def load_sessions(
             f"Standardized directory not found: {standardized_dir}"
         )
 
-    nc_paths = sorted(standardized_dir.glob(_STANDARDIZED_GLOB))
+    pattern = glob_pattern if glob_pattern is not None else _STANDARDIZED_GLOB
+    nc_paths = sorted(standardized_dir.glob(pattern))
     if not nc_paths:
         warnings.warn(
-            f"No files matching '{_STANDARDIZED_GLOB}' found in {standardized_dir}",
+            f"No files matching '{pattern}' found in {standardized_dir}",
             stacklevel=2,
         )
         return []

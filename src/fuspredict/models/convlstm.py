@@ -11,9 +11,12 @@ gradient-norm clipping for stability.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.decomposition import PCA
 
 
 class ConvLSTMCell(nn.Module):
@@ -430,6 +433,45 @@ class ConvLSTMPredictor:
         )
 
 
+class ConvLSTMVesselMaskedInput(ConvLSTMPredictor):
+    """
+    ConvLSTM variant that zeros out non-vessel pixels in all input and target
+    frames before training, so the model only ever sees vessel signal.
+
+    The vessel_mask must be supplied via ``set_vessel_mask`` before calling
+    ``fit``; if no mask is set it falls back to standard ConvLSTM behaviour.
+    """
+
+    name: str = "convlstm_vessel_masked_input"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._vessel_mask: np.ndarray | None = None
+
+    def set_vessel_mask(self, mask: np.ndarray) -> None:
+        self._vessel_mask = mask
+
+    def _apply_mask(self, frames: np.ndarray) -> np.ndarray:
+        """Zero non-vessel pixels in (T, H, W) frames."""
+        if self._vessel_mask is None:
+            return frames
+        return frames * self._vessel_mask[np.newaxis]
+
+    def fit(
+        self,
+        train_frames: list[np.ndarray],
+        horizons: list[int],
+        vessel_mask: np.ndarray | None = None,
+    ) -> None:
+        if vessel_mask is not None:
+            self._vessel_mask = vessel_mask
+        masked = [self._apply_mask(f) for f in train_frames]
+        super().fit(masked, horizons)
+
+    def predict(self, context: np.ndarray, horizon: int) -> np.ndarray:
+        return super().predict(self._apply_mask(context), horizon)
+
+
 class ConvLSTMVesselLoss(ConvLSTMPredictor):
     """
     ConvLSTM variant that restricts training loss to vessel pixels only.
@@ -460,3 +502,68 @@ class ConvLSTMVesselLoss(ConvLSTMPredictor):
             horizons,
             vessel_mask=vessel_mask if vessel_mask is not None else self._vessel_mask,
         )
+
+
+class ConvLSTMPCADenoised(ConvLSTMPredictor):
+    """
+    ConvLSTM variant that denoises frames via PCA truncation before training
+    and prediction.
+
+    A PCA basis is fitted on all training frames (flattened). Each frame is
+    then projected into the K-component subspace and reconstructed, keeping
+    only the dominant spatial variance and discarding high-frequency noise.
+    The standard ConvLSTM is then trained on these denoised frames.
+
+    Parameters
+    ----------
+    n_components : int
+        Number of PCA components to retain for denoising. Default: 20.
+    seed : int
+        Random seed for PCA (passed through from parent; shared).
+    All other parameters are inherited from ConvLSTMPredictor.
+    """
+
+    name: str = "convlstm_pca_denoised"
+
+    def __init__(self, n_components: int = 20, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.n_components = n_components
+        self._pca: PCA | None = None
+        self._frame_shape: tuple[int, int] | None = None
+
+    def _fit_pca(self, train_frames: list[np.ndarray]) -> None:
+        self._frame_shape = train_frames[0].shape[1:]
+        flattened = np.concatenate(
+            [f.reshape(f.shape[0], -1) for f in train_frames], axis=0
+        ).astype(np.float64)
+        n_components = min(self.n_components, flattened.shape[0], flattened.shape[1])
+        self._pca = PCA(
+            n_components=n_components,
+            svd_solver="randomized",
+            random_state=self.seed,
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "invalid value encountered in divide", RuntimeWarning)
+            self._pca.fit(flattened)
+
+    def _denoise(self, frames: np.ndarray) -> np.ndarray:
+        """Project (T, H, W) frames through PCA truncation and reconstruct."""
+        if self._pca is None or self._frame_shape is None:
+            return frames
+        T = frames.shape[0]
+        flat = frames.reshape(T, -1).astype(np.float64)
+        denoised = self._pca.inverse_transform(self._pca.transform(flat))
+        return denoised.reshape(T, *self._frame_shape).astype(np.float32)
+
+    def fit(
+        self,
+        train_frames: list[np.ndarray],
+        horizons: list[int],
+        vessel_mask: np.ndarray | None = None,
+    ) -> None:
+        self._fit_pca(train_frames)
+        denoised = [self._denoise(f) for f in train_frames]
+        super().fit(denoised, horizons, vessel_mask=vessel_mask)
+
+    def predict(self, context: np.ndarray, horizon: int) -> np.ndarray:
+        return super().predict(self._denoise(context), horizon)

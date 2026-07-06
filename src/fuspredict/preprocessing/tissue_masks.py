@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from .morphology import imclose, strel_disk
 
 from .io import (
     STAGE_REORIENTED_RESIZED,
@@ -39,30 +40,37 @@ STAGE_TISSUE_MASK = "tissue_mask"
 def compute_tissue_masks(
     frames: np.ndarray,
     *,
-    vessel_intensity_percentile: float = 60.0,
-    vessel_cv_percentile: float = 40.0,
-    min_vessel_pixels: int = 10,
+    vessel_intensity_percentile: float = 75.0,
+    vessel_cv_percentile: float = 75.0,
+    min_vessel_pixels: int = 200,
+    closing_radius: int = 1,
+    eps: float = 1e-6,
 ) -> dict:
     """
     Segment baseline fUS frames into vessel and parenchyma masks.
 
-    Power Doppler signal is high in vessels (high mean intensity, high
-    coefficient of variation from cardiac pulsatility) and low in parenchyma.
-    A pixel is classified as a vessel if it exceeds both the intensity and CV
-    thresholds; everything else is parenchyma.
+    Uses a joint mean-intensity and coefficient-of-variation threshold,
+    followed by morphological closing (equivalent to MATLAB imclose) to
+    close small gaps within vessel structures.
+
+    Pass pre-z-score frames; CV is not meaningful on z-scored data where
+    the temporal mean is ~0.
 
     Parameters
     ----------
     frames : np.ndarray, shape (T, H, W)
-        Reoriented/resized baseline frames (log10 space).
+        Reoriented/resized baseline frames (positive-valued, log10 space).
     vessel_intensity_percentile : float
-        Pixels with temporal mean above this percentile are vessel candidates.
+        Percentile threshold applied to the per-pixel temporal-mean map.
     vessel_cv_percentile : float
-        Pixels with temporal CV (std / |mean|) above this percentile are vessel
-        candidates. Combined with the intensity threshold via AND.
+        Percentile threshold applied to the per-pixel CV map.
     min_vessel_pixels : int
-        If fewer vessel pixels are found after AND thresholding, fall back to
-        intensity-only threshold.
+        If the joint criterion yields fewer than this many vessel pixels,
+        fall back to a mean-intensity-only criterion.
+    closing_radius : int
+        Radius of the disk structuring element for morphological closing.
+    eps : float
+        Floor for the temporal mean to avoid division by near-zero in the CV.
 
     Returns
     -------
@@ -83,8 +91,10 @@ def compute_tissue_masks(
 
     mean_map = arr.mean(axis=0)
     std_map  = arr.std(axis=0)
-    eps      = float(np.finfo(np.float32).eps)
-    cv_map   = std_map / (np.abs(mean_map) + eps)
+
+    safe_mu = np.where(np.abs(mean_map) < eps, np.nan, mean_map)
+    cv_map  = np.abs(std_map / safe_mu)
+    cv_map  = np.nan_to_num(cv_map, nan=0.0, posinf=0.0, neginf=0.0)
 
     finite_mean = mean_map[np.isfinite(mean_map)]
     finite_cv   = cv_map[np.isfinite(cv_map)]
@@ -96,7 +106,7 @@ def compute_tissue_masks(
             "vessel_mask":         dummy,
             "parenchyma_mask":     ~dummy,
             "mean_map":            mean_map,
-            "cv_map":              cv_map,
+            "cv_map":              cv_map.astype(np.float32),
             "intensity_threshold": float("nan"),
             "cv_threshold":        float("nan"),
             "n_vessel_pixels":     0,
@@ -107,18 +117,22 @@ def compute_tissue_masks(
     intensity_thr = float(np.percentile(finite_mean, vessel_intensity_percentile))
     cv_thr        = float(np.percentile(finite_cv,   vessel_cv_percentile))
 
-    vessel_mask = (mean_map >= intensity_thr) & (cv_map >= cv_thr)
+    vessel_mask = (mean_map > intensity_thr) & (cv_map > cv_thr)
     method      = "intensity_and_cv"
 
     if int(vessel_mask.sum()) < min_vessel_pixels:
-        vessel_mask = mean_map >= intensity_thr
+        vessel_mask = mean_map > intensity_thr
         method      = "intensity_only_fallback"
 
+    if closing_radius > 0:
+        vessel_mask = imclose(vessel_mask, strel_disk(closing_radius))
+
+    vessel_mask     = vessel_mask.astype(bool)
     parenchyma_mask = ~vessel_mask
 
     return {
-        "vessel_mask":         vessel_mask.astype(bool),
-        "parenchyma_mask":     parenchyma_mask.astype(bool),
+        "vessel_mask":         vessel_mask,
+        "parenchyma_mask":     parenchyma_mask,
         "mean_map":            mean_map.astype(np.float32),
         "cv_map":              cv_map.astype(np.float32),
         "intensity_threshold": intensity_thr,
@@ -137,9 +151,10 @@ def segment_all_sessions(
     in_nc_paths: list[str],
     out_dir: str | os.PathLike[str],
     *,
-    vessel_intensity_percentile: float = 60.0,
-    vessel_cv_percentile: float = 40.0,
-    min_vessel_pixels: int = 10,
+    vessel_intensity_percentile: float = 75.0,
+    vessel_cv_percentile: float = 75.0,
+    min_vessel_pixels: int = 200,
+    closing_radius: int = 1,
     overwrite: bool = False,
 ) -> list[str]:
     """
@@ -151,7 +166,7 @@ def segment_all_sessions(
         Paths to reoriented/resized baseline .nc session files.
     out_dir : path-like
         Directory to write tissue mask .nc files.
-    vessel_intensity_percentile, vessel_cv_percentile, min_vessel_pixels
+    vessel_intensity_percentile, vessel_cv_percentile, min_vessel_pixels, closing_radius
         Forwarded to compute_tissue_masks.
     overwrite : bool
         If False, skip sessions whose output file already exists.
@@ -189,6 +204,7 @@ def segment_all_sessions(
             vessel_intensity_percentile=vessel_intensity_percentile,
             vessel_cv_percentile=vessel_cv_percentile,
             min_vessel_pixels=min_vessel_pixels,
+            closing_radius=closing_radius,
         )
 
         H, W       = result["mean_map"].shape
@@ -217,6 +233,7 @@ def segment_all_sessions(
                 "vessel_intensity_percentile":  vessel_intensity_percentile,
                 "vessel_cv_percentile":         vessel_cv_percentile,
                 "min_vessel_pixels":            min_vessel_pixels,
+                "closing_radius":               closing_radius,
                 "intensity_threshold":          result["intensity_threshold"],
                 "cv_threshold":                 result["cv_threshold"],
                 "n_vessel_pixels":              result["n_vessel_pixels"],

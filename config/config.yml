@@ -25,7 +25,7 @@ subjects:
 # ---------------------------------------------------------------------------
 preprocessing:
 
-  run_task_frames: true
+  period: both       # baseline | task | both
 
   baseline:
     apply_log10: true
@@ -38,10 +38,10 @@ preprocessing:
     save_previews: true
     overwrite:   true
     flip_session_ids_by_subject:
-      secundo: []
+      secundo: [Se04092020, Se01092020, Se25082020, Se03092020, Se27082020, Se04082020, Se24022020]
 
   filtering:
-    enable_lowpass:     true
+    enable_lowpass:     false
     lowpass_cutoff_hz:  0.5
     lowpass_order:      4
     enable_highpass:    false
@@ -57,14 +57,15 @@ preprocessing:
     eps:               1.0e-8
     floor_percentile:  10.0
     clip_abs:          3.0
-    smooth_kernel_sizes: []
+    smooth_kernel_sizes: [3, 5, 7]
     causal:            true
     overwrite:         true
 
   tissue_segmentation:
-    vessel_intensity_percentile: 60.0
-    vessel_cv_percentile:        40.0
-    min_vessel_pixels:           10
+    vessel_intensity_percentile: 75.0
+    vessel_cv_percentile:        75.0
+    min_vessel_pixels:           2500
+    closing_radius:              1
     overwrite:                   true
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ persistence_analysis:
   example_target_frame:  10
   pearson_rolling_window: 20
   acf_patch_sizes: [1, 5, 10, 14, 20, 28]
+  summary_lags: [5, 10, 20]
 
 # ---------------------------------------------------------------------------
 # AR / modeling

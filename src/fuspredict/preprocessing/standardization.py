@@ -299,14 +299,16 @@ def standardize_stage_sessions(
 
         _std_fn = standardize_frames_pixelwise_causal if causal else standardize_frames_pixelwise
 
+        # Z-score the raw frames once; smoothed variants are derived from this.
+        frames_z, mean_map, std_map = _std_fn(
+            frames_in,
+            eps=eps,
+            floor_percentile=floor_percentile,
+            clip_abs=clip_abs,
+        )
+
         def _make_dataset(frames: np.ndarray, kernel_size: int | None = None) -> xr.Dataset:
-            frames_z, mean_map, std_map = _std_fn(
-                frames,
-                eps=eps,
-                floor_percentile=floor_percentile,
-                clip_abs=clip_abs,
-            )
-            T, H, W = frames_z.shape
+            T, H, W = frames.shape
             attrs = sanitize_attrs({
                 **da.attrs,
                 "stage":                STAGE_STANDARDIZED,
@@ -322,7 +324,7 @@ def standardize_stage_sessions(
             })
             return xr.Dataset(
                 {
-                    "frames":   xr.DataArray(frames_z,  dims=["time", "x", "y"]),
+                    "frames":   xr.DataArray(frames,    dims=["time", "x", "y"]),
                     "mean_map": xr.DataArray(mean_map,  dims=["x", "y"]),
                     "std_map":  xr.DataArray(std_map,   dims=["x", "y"]),
                 },
@@ -334,21 +336,143 @@ def standardize_stage_sessions(
         base_name = f"baseline_{session_id}_{condition}_{STAGE_STANDARDIZED}.nc"
         base_path = out_root / base_name
         if overwrite or not base_path.exists():
-            ds = _make_dataset(frames_in)
+            ds = _make_dataset(frames_z)
             ds.to_netcdf(base_path)
             print(f"  Standardized {in_path.name} → {base_path.name}")
         saved.append(str(base_path))
 
-        # Smoothed variants
+        # Smoothed variants (applied to z-scored frames)
         for ks in smooth_kernel_sizes:
-            ks        = int(ks)
-            sm_name   = f"baseline_{session_id}_{condition}_{STAGE_STANDARDIZED}_smooth{ks}x{ks}.nc"
-            sm_path   = out_root / sm_name
+            ks      = int(ks)
+            sm_name = f"baseline_{session_id}_{condition}_{STAGE_STANDARDIZED}_smooth{ks}x{ks}.nc"
+            sm_path = out_root / sm_name
             if overwrite or not sm_path.exists():
-                frames_smoothed = spatial_mean_filter_frames(frames_in, ks)
+                frames_smoothed = spatial_mean_filter_frames(frames_z, ks)
                 ds = _make_dataset(frames_smoothed, kernel_size=ks)
                 ds.to_netcdf(sm_path)
                 print(f"  Standardized (smooth {ks}x{ks}) {in_path.name} → {sm_path.name}")
+            saved.append(str(sm_path))
+
+    return saved
+
+
+def standardize_task_sessions_with_baseline_stats(
+    task_nc_paths: list[str],
+    baseline_std_dir: str | os.PathLike[str],
+    out_dir: str | os.PathLike[str],
+    *,
+    clip_abs: float | None = 3.0,
+    smooth_kernel_sizes: tuple[int, ...] = (),
+    overwrite: bool = False,
+) -> list[str]:
+    """
+    Z-score active (task) frames using per-pixel stats from matched baseline sessions.
+
+    For each task session, loads the corresponding baseline standardized .nc to
+    get mean_map and std_map, then applies those to the task frames. This puts
+    task frames on the same scale as baseline z-scores.
+
+    Parameters
+    ----------
+    task_nc_paths : list of str
+        Paths to reoriented task .nc files.
+    baseline_std_dir : str or Path
+        Directory containing baseline standardized .nc files (must contain
+        mean_map and std_map variables).
+    out_dir : str or Path
+        Directory where task standardized .nc files will be saved.
+    clip_abs : float or None
+        Clip standardized values to [-clip_abs, +clip_abs]. None to disable.
+    overwrite : bool
+
+    Returns
+    -------
+    list of str
+        Paths to saved .nc files.
+    """
+    out_root     = Path(out_dir)
+    baseline_dir = Path(baseline_std_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    saved: list[str] = []
+
+    for task_path_str in task_nc_paths:
+        task_path  = Path(task_path_str)
+        task_da    = xr.open_dataarray(task_path)
+        session_id = task_da.attrs.get("session_id") or derive_session_id_from_path(task_path)
+
+        # Find matching baseline standardized file (unfiltered variant)
+        baseline_nc = baseline_dir / f"baseline_{session_id}_unfiltered_{STAGE_STANDARDIZED}.nc"
+        if not baseline_nc.exists():
+            # Fall back to any matching file for this session
+            candidates = sorted(baseline_dir.glob(f"baseline_{session_id}_*_{STAGE_STANDARDIZED}.nc"))
+            if not candidates:
+                import warnings
+                warnings.warn(
+                    f"{session_id}: no baseline standardized file found in {baseline_dir} — skipping.",
+                    stacklevel=2,
+                )
+                continue
+            baseline_nc = candidates[0]
+
+        baseline_ds = xr.open_dataset(baseline_nc)
+        mean_map    = baseline_ds["mean_map"].values.astype(np.float32)
+        std_map     = baseline_ds["std_map"].values.astype(np.float32)
+        baseline_ds.close()
+
+        frames = task_da.values.astype(np.float32)  # (T, H, W)
+
+        frames_z = (frames - mean_map[np.newaxis]) / std_map[np.newaxis]
+        if clip_abs is not None and float(clip_abs) > 0:
+            frames_z = np.clip(frames_z, -float(clip_abs), float(clip_abs))
+
+        attrs = sanitize_attrs({
+            **task_da.attrs,
+            "stage":              STAGE_STANDARDIZED,
+            "session_id":         session_id,
+            "condition":          "unfiltered",
+            "standardize_method": "zscore_baseline_stats",
+            "clip_abs":           clip_abs if clip_abs is not None else "none",
+            "baseline_stats_src": baseline_nc.name,
+            "zscored":            True,
+        })
+
+        ds = xr.Dataset(
+            {
+                "frames":   xr.DataArray(frames_z, dims=["time", "x", "y"]),
+                "mean_map": xr.DataArray(mean_map,  dims=["x", "y"]),
+                "std_map":  xr.DataArray(std_map,   dims=["x", "y"]),
+            },
+            coords=task_da.coords,
+            attrs=attrs,
+        )
+
+        out_name = f"task_{session_id}_unfiltered_{STAGE_STANDARDIZED}.nc"
+        out_path = out_root / out_name
+        if overwrite or not out_path.exists():
+            ds.to_netcdf(out_path)
+            print(f"  Standardized (baseline stats) {task_path.name} → {out_path.name}")
+        saved.append(str(out_path))
+
+        # Smoothed variants (applied to z-scored frames)
+        for ks in smooth_kernel_sizes:
+            ks      = int(ks)
+            sm_name = f"task_{session_id}_unfiltered_{STAGE_STANDARDIZED}_smooth{ks}x{ks}.nc"
+            sm_path = out_root / sm_name
+            if overwrite or not sm_path.exists():
+                frames_smoothed = spatial_mean_filter_frames(frames_z, ks)
+                sm_attrs = sanitize_attrs({**attrs, "smooth_kernel_size": ks})
+                sm_ds = xr.Dataset(
+                    {
+                        "frames":   xr.DataArray(frames_smoothed, dims=["time", "x", "y"]),
+                        "mean_map": xr.DataArray(mean_map,         dims=["x", "y"]),
+                        "std_map":  xr.DataArray(std_map,          dims=["x", "y"]),
+                    },
+                    coords=task_da.coords,
+                    attrs=sm_attrs,
+                )
+                sm_ds.to_netcdf(sm_path)
+                print(f"  Standardized (baseline stats, smooth {ks}x{ks}) {task_path.name} → {sm_path.name}")
             saved.append(str(sm_path))
 
     return saved

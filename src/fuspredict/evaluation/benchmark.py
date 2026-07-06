@@ -22,7 +22,8 @@ import pandas as pd
 from fuspredict.data.session import Session
 from fuspredict.evaluation.stats import rmse
 from fuspredict.models.base import Predictor, split_frames
-from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss
+from fuspredict.models.convlstm import ConvLSTMPredictor, ConvLSTMVesselLoss, ConvLSTMVesselMaskedInput
+
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +151,7 @@ def evaluate_predictor(
     for session in sessions:
         try:
             train, test = split_frames(session.frames, train_frac=train_frac)
-            if isinstance(predictor, ConvLSTMVesselLoss) and session.vessel_mask is not None:
+            if isinstance(predictor, (ConvLSTMVesselLoss, ConvLSTMVesselMaskedInput)) and session.vessel_mask is not None:
                 predictor.set_vessel_mask(session.vessel_mask)
             predictor.fit(train_frames=[train], horizons=horizons)
 
@@ -293,7 +294,9 @@ def run_benchmark(
             s for s in sessions if (predictor.name, s.id) not in done_pairs
         ]
 
-        for session in pending_sessions:
+        n_pending = len(pending_sessions)
+        for s_idx, session in enumerate(pending_sessions):
+            print(f"  [{s_idx+1}/{n_pending}] {session.id}", flush=True)
             session_df = evaluate_predictor(
                 predictor,
                 [session],

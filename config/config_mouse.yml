@@ -29,7 +29,7 @@ subjects:
 # ---------------------------------------------------------------------------
 preprocessing:
 
-  run_task_frames: false
+  period: baseline   # baseline | task | both
 
   baseline:
     apply_log10: true
@@ -66,9 +66,10 @@ preprocessing:
     overwrite:         false
 
   tissue_segmentation:
-    vessel_intensity_percentile: 60.0
-    vessel_cv_percentile:        40.0
-    min_vessel_pixels:           10
+    vessel_intensity_percentile: 75.0
+    vessel_cv_percentile:        75.0
+    min_vessel_pixels:           2500
+    closing_radius:              1
     overwrite:                   false
 
 # ---------------------------------------------------------------------------
