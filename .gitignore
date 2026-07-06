@@ -10,3 +10,9 @@ src/fuspredict.egg-info/dependency_links.txt
 *__pycache__
 *__init__.py
 *.lock
+/.claude
+CLAUDE.md
+decisions.md
+/figures
+/literature
+notebook.md
