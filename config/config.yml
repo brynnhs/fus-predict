@@ -62,9 +62,10 @@ preprocessing:
     overwrite:         true
 
   tissue_segmentation:
-    vessel_intensity_percentile: 60.0
-    vessel_cv_percentile:        40.0
-    min_vessel_pixels:           10
+    vessel_intensity_percentile: 75.0
+    vessel_cv_percentile:        75.0
+    min_vessel_pixels:           2500
+    closing_radius:              1
     overwrite:                   true
 
 # ---------------------------------------------------------------------------
