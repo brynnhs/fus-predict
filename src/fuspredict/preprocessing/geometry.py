@@ -11,17 +11,7 @@ from .io import (
     derive_session_id_from_path,
     sanitize_attrs,
 )
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _validate_frames_thw(frames: np.ndarray, context: str = "frames") -> np.ndarray:
-    arr = np.asarray(frames)
-    if arr.ndim != 3:
-        raise ValueError(f"{context}: expected shape (T, H, W), got {arr.shape}")
-    return arr
+from ._utils import _validate_frames_thw
 
 
 def _select_preview_indices(T: int, n_frames: int) -> np.ndarray:
@@ -40,7 +30,8 @@ def _compute_preview_limits(
     q_high: float = 99.0,
 ) -> tuple[float, float]:
     """Compute shared preview intensity limits from before frames only."""
-    arr = _validate_frames_thw(before, context="before")
+    _validate_frames_thw(before, ctx="before")
+    arr = np.asarray(before)
     vals = arr[idxs].reshape(-1) if idxs.size > 0 else arr.reshape(-1)
     vals = vals[np.isfinite(vals)]
 
@@ -65,13 +56,15 @@ def _compute_preview_limits(
 
 def rotate_frames(frames: np.ndarray, k: int) -> np.ndarray:
     """Rotate each frame in a (T, H, W) array with np.rot90 around spatial axes."""
-    arr = _validate_frames_thw(frames, context="rotate_frames")
+    _validate_frames_thw(frames, ctx="rotate_frames")
+    arr = np.asarray(frames)
     return np.rot90(arr, k=int(k), axes=(1, 2))
 
 
 def flip_frames_lr(frames: np.ndarray) -> np.ndarray:
     """Flip each frame in a (T, H, W) array left-right (width axis)."""
-    arr = _validate_frames_thw(frames, context="flip_frames_lr")
+    _validate_frames_thw(frames, ctx="flip_frames_lr")
+    arr = np.asarray(frames)
     return np.flip(arr, axis=2)
 
 
@@ -80,7 +73,8 @@ def pad_or_crop_to_square(frames: np.ndarray, target_size: int) -> np.ndarray:
     Center pad or crop a (T, H, W) array to (T, target_size, target_size).
     No interpolation is performed.
     """
-    arr = _validate_frames_thw(frames, context="pad_or_crop_to_square")
+    _validate_frames_thw(frames, ctx="pad_or_crop_to_square")
+    arr = np.asarray(frames)
     target = int(target_size)
     if target <= 0:
         raise ValueError(f"target_size must be > 0, got {target_size}")
@@ -133,8 +127,10 @@ def save_before_after_preview(
     """Save a before/after preview grid with shared intensity scaling from before frames."""
     import matplotlib.pyplot as plt
 
-    before_arr = _validate_frames_thw(before, context="save_before_after_preview(before)")
-    after_arr  = _validate_frames_thw(after,  context="save_before_after_preview(after)")
+    _validate_frames_thw(before, ctx="save_before_after_preview(before)")
+    _validate_frames_thw(after,  ctx="save_before_after_preview(after)")
+    before_arr = np.asarray(before)
+    after_arr  = np.asarray(after)
 
     T    = min(before_arr.shape[0], after_arr.shape[0])
     idxs = _select_preview_indices(T=T, n_frames=n_frames)

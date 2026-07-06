@@ -40,23 +40,12 @@ from .io import (
     sanitize_attrs,
     spatial_mean_filter_frames,
 )
+from ._utils import _validate_frames_thw
 
 CONDITION_UNFILTERED = "unfiltered"
 CONDITION_FILTERED   = "filtered"
 
 _SUPPORTED_INPUT_STAGES = (STAGE_REORIENTED_RESIZED, STAGE_FILTERED)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _validate_frames_thw(frames: np.ndarray, ctx: str) -> tuple[int, int, int]:
-    arr = np.asarray(frames)
-    if arr.ndim != 3:
-        raise ValueError(f"{ctx}: expected shape (T, H, W), got {arr.shape}")
-    t, h, w = arr.shape
-    return int(t), int(h), int(w)
 
 
 def _condition_for_stage(stage: str) -> str:

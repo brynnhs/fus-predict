@@ -8,18 +8,7 @@ import numpy as np
 import xarray as xr
 
 from .io import STAGE_FILTERED, derive_session_id_from_path, sanitize_attrs
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-def _validate_frames_thw(frames: np.ndarray, ctx: str) -> tuple[int, int, int]:
-    arr = np.asarray(frames)
-    if arr.ndim != 3:
-        raise ValueError(f"{ctx}: expected shape (T, H, W), got {arr.shape}")
-    t, h, w = arr.shape
-    return int(t), int(h), int(w)
+from ._utils import _validate_frames_thw
 
 
 # ---------------------------------------------------------------------------
