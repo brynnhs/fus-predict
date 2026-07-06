@@ -97,7 +97,7 @@ modeling:
   frame_rate:    2.5
   train_frac:    0.8
   n_lags:        10
-  horizons:      [1, 5, 10]
+  horizons:      [1]
 
   pixel_ar:
     ridge_lambda: 0.01
