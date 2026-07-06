@@ -22,7 +22,12 @@ Usage:
 """
 
 import argparse
+import math
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import xarray as xr
 
 from fuspredict.preprocessing.geometry import reorient_baseline_sessions
 from fuspredict.preprocessing.io import (
@@ -60,6 +65,38 @@ def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
     if exclude_ids:
         paths = [p for p in paths if not any(sid in Path(p).stem for sid in exclude_ids)]
     return paths
+
+
+def plot_vessel_masks(tissue_dir: Path, subject: str, out_dir: Path) -> None:
+    mask_paths = sorted(tissue_dir.glob("tissue_mask_*.nc"))
+    if not mask_paths:
+        return
+
+    ncols = 6
+    nrows = math.ceil(len(mask_paths) / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 2, nrows * 2))
+    axes = np.array(axes).reshape(-1)
+
+    for ax, path in zip(axes, mask_paths):
+        ds = xr.open_dataset(path)
+        mask = ds["vessel_mask"].values.astype(bool)
+        session_id = ds.attrs.get("session_id", path.stem.replace("tissue_mask_", ""))
+        pct = 100.0 * mask.sum() / mask.size
+        ax.imshow(mask, origin="upper", cmap="gray", vmin=0, vmax=1, aspect="equal")
+        ax.set_title(f"{session_id}\n{pct:.0f}%", fontsize=6)
+        ax.axis("off")
+        ds.close()
+
+    for ax in axes[len(mask_paths):]:
+        ax.axis("off")
+
+    fig.suptitle(f"Vessel masks — {subject} (% coverage)", fontsize=10)
+    fig.tight_layout()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"vessel_masks_{subject}.png"
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  Vessel mask figure saved: {out_path}")
 
 
 def main() -> None:
@@ -213,9 +250,11 @@ def main() -> None:
             vessel_intensity_percentile=tissue_cfg["vessel_intensity_percentile"],
             vessel_cv_percentile=tissue_cfg["vessel_cv_percentile"],
             min_vessel_pixels=tissue_cfg["min_vessel_pixels"],
+            closing_radius=tissue_cfg.get("closing_radius", 1),
             overwrite=tissue_cfg["overwrite"],
         )
         print(f"  Tissue masks: {len(list_nc(tissue_dir))}")
+        plot_vessel_masks(tissue_dir, subject, subj_deriv / f"figures{dir_suffix}")
 
 
 if __name__ == "__main__":
