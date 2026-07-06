@@ -73,7 +73,10 @@ def list_nc(directory: Path, exclude_ids: set[str] | None = None) -> list[str]:
     which only includes files written in the current run (empty when
     overwrite=False).
     """
-    paths = sorted(str(p) for p in Path(directory).glob("*.nc"))
+    paths = sorted(
+        str(p) for p in Path(directory).glob("*.nc")
+        if not p.stem.startswith("labels_")
+    )
     if exclude_ids:
         paths = [p for p in paths if not any(sid in Path(p).stem for sid in exclude_ids)]
     return paths

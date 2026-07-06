@@ -207,6 +207,82 @@ def load_label_file(label_path: str) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Label sidecar
+# ---------------------------------------------------------------------------
+
+LABEL_SIDECAR_SUFFIX = "labels"
+
+
+def save_label_sidecar(
+    labels_arr: np.ndarray,
+    session_id: str,
+    output_dir: str | os.PathLike[str],
+    fps: float,
+    source_file: str,
+    *,
+    overwrite: bool = False,
+) -> str | None:
+    """
+    Write the full (trimmed) per-frame label sequence as a sidecar .nc file.
+
+    The sidecar records the raw integer label code for every frame in the
+    trimmed acquisition timeline, co-indexed with the baseline/task .nc files
+    produced from the same mismatch()-trimmed arrays.  Downstream loaders
+    recover period indices by grouping on label value without touching the
+    source .mat files.
+
+    Label convention (monkey .mat):
+      -1  baseline
+       0  pause
+      >0  task/stimulus
+
+    Mouse sessions use a synthetic label array (-1 = baseline, 1 = task)
+    derived from the timing mask; the same convention applies.
+
+    Parameters
+    ----------
+    labels_arr : np.ndarray, shape (T,), integer dtype
+        Per-frame label codes over the full trimmed timeline.
+    session_id : str
+    output_dir : str or Path
+    fps : float
+    source_file : str
+        Basename of the source .mat or .source.scan file (for provenance).
+    overwrite : bool
+
+    Returns
+    -------
+    str or None
+        Path to the saved sidecar, or None if it already exists and
+        overwrite is False.
+    """
+    out_dir  = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{LABEL_SIDECAR_SUFFIX}_{session_id}.nc"
+
+    if out_path.exists() and not overwrite:
+        return str(out_path)
+
+    T = len(labels_arr)
+    da = xr.DataArray(
+        data=labels_arr.astype(np.int8),
+        dims=["time"],
+        coords={"time": np.arange(T) / fps},
+        attrs=sanitize_attrs({
+            "session_id":   session_id,
+            "frame_rate":   fps,
+            "n_frames":     int(T),
+            "source_file":  source_file,
+            "label_codes":  "-1=baseline, 0=pause, >0=task",
+        }),
+        name="labels",
+    )
+    ds = da.to_dataset(name="labels")
+    ds.to_netcdf(out_path)
+    return str(out_path)
+
+
+# ---------------------------------------------------------------------------
 # Stage 1 — Baseline extraction
 # ---------------------------------------------------------------------------
 
@@ -263,6 +339,16 @@ def extract_and_save_baseline(
         labels_arr         = load_label_file(label_path)
         frames, labels_arr = mismatch(frames, labels_arr)
 
+        fps = source_fps or 2.5
+        save_label_sidecar(
+            labels_arr=labels_arr,
+            session_id=date_code,
+            output_dir=output_dir,
+            fps=fps,
+            source_file=os.path.basename(label_path),
+            overwrite=overwrite,
+        )
+
         baseline_mask    = labels_arr == baseline_value
         baseline_indices = np.where(baseline_mask)[0]
         baseline_frames  = frames[baseline_mask]
@@ -284,7 +370,6 @@ def extract_and_save_baseline(
             eps             = None
 
         T, H, W = baseline_frames.shape
-        fps     = source_fps or 2.5
 
         attrs = sanitize_attrs({
             "stage":             BASELINE_STAGE_EXTRACTED,
@@ -769,6 +854,17 @@ def extract_and_save_baseline_mouse(
             baseline_mask = extract_baseline_mask_from_timing(frame_times, timing)
         else:
             baseline_mask = np.ones(T_total, dtype=bool)
+
+        # Synthesize label array: -1 = baseline, 1 = task (no pause concept for mouse)
+        synth_labels = np.where(baseline_mask, np.int8(-1), np.int8(1))
+        save_label_sidecar(
+            labels_arr=synth_labels,
+            session_id=session_id,
+            output_dir=output_dir,
+            fps=fps,
+            source_file=os.path.basename(str(scan_path)),
+            overwrite=overwrite,
+        )
 
         baseline_frames = frames[baseline_mask]
         T = baseline_frames.shape[0]

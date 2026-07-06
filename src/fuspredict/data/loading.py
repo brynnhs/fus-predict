@@ -33,12 +33,13 @@ Each tissue mask .nc file is an xr.Dataset with:
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 
-from fuspredict.preprocessing.io import STAGE_STANDARDIZED, derive_session_id_from_path
+from fuspredict.preprocessing.io import LABEL_SIDECAR_SUFFIX, STAGE_STANDARDIZED, derive_session_id_from_path
 from fuspredict.data.session import Session
 
 # Glob pattern for standardized baseline files
@@ -201,6 +202,85 @@ def load_sessions(
 
     sessions.sort(key=lambda s: s.id)
     return sessions
+
+
+# ---------------------------------------------------------------------------
+# Label sidecar loader
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SessionLabels:
+    """Frame-index groupings derived from a label sidecar .nc file.
+
+    All index arrays are into the full trimmed acquisition timeline
+    (same frame numbering as the sidecar's time coordinate).
+
+    Attributes
+    ----------
+    session_id : str
+    n_frames : int
+        Total frames in the trimmed acquisition (length of the label array).
+    baseline : np.ndarray of int
+        Frame indices where label == -1.
+    task : np.ndarray of int
+        Frame indices where label > 0.
+    pause : np.ndarray of int
+        Frame indices where label == 0.
+    fps : float
+    """
+    session_id: str
+    n_frames: int
+    baseline: np.ndarray
+    task: np.ndarray
+    pause: np.ndarray
+    fps: float
+
+    def __repr__(self) -> str:
+        return (
+            f"SessionLabels(id={self.session_id!r}, n_frames={self.n_frames}, "
+            f"baseline={len(self.baseline)}, task={len(self.task)}, pause={len(self.pause)})"
+        )
+
+
+def load_label_sidecar(
+    session_id: str,
+    sidecar_dir: str | Path,
+) -> SessionLabels:
+    """
+    Load a label sidecar and return period frame indices.
+
+    Parameters
+    ----------
+    session_id : str
+        Session identifier (e.g. ``"20240315"``).
+    sidecar_dir : str or Path
+        Directory containing ``labels_<session_id>.nc`` files.
+
+    Returns
+    -------
+    SessionLabels
+
+    Raises
+    ------
+    FileNotFoundError
+        If the sidecar file does not exist.
+    """
+    path = Path(sidecar_dir) / f"{LABEL_SIDECAR_SUFFIX}_{session_id}.nc"
+    if not path.exists():
+        raise FileNotFoundError(f"Label sidecar not found: {path}")
+
+    with xr.open_dataset(path) as ds:
+        labels = ds["labels"].values.astype(np.int8)
+        fps = float(ds.attrs.get("frame_rate", 2.5))
+
+    return SessionLabels(
+        session_id=session_id,
+        n_frames=len(labels),
+        baseline=np.where(labels == -1)[0],
+        task=np.where(labels > 0)[0],
+        pause=np.where(labels == 0)[0],
+        fps=fps,
+    )
 
 
 # ---------------------------------------------------------------------------
