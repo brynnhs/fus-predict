@@ -57,7 +57,7 @@ preprocessing:
     eps:               1.0e-8
     floor_percentile:  10.0
     clip_abs:          3.0
-    smooth_kernel_sizes: []
+    smooth_kernel_sizes: [3, 5, 7]
     causal:            true
     overwrite:         true
 
