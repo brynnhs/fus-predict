@@ -50,6 +50,18 @@ def parse_args() -> argparse.Namespace:
         default="config.yml",
         help="Config filename inside config/ (default: config.yml).",
     )
+    stage = parser.add_mutually_exclusive_group()
+    stage.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help="Run only baseline extraction, reorientation, standardization, and tissue masks.",
+    )
+    stage.add_argument(
+        "--task-only",
+        action="store_true",
+        help="Run only task extraction, reorientation, and standardization "
+             "(requires baseline_only_standardized to already exist for baseline stats).",
+    )
     return parser.parse_args()
 
 
@@ -101,6 +113,9 @@ def plot_vessel_masks(tissue_dir: Path, subject: str, out_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    run_baseline = not args.task_only
+    run_task     = not args.baseline_only
+
     repo_root = find_repo_root()
     config = load_project_config(repo_root, config_name=args.config)
 
@@ -132,29 +147,30 @@ def main() -> None:
         # Stage 1 — Extract baseline frames
         # ---------------------------------------------------------------
         baseline_raw_dir = subj_deriv / f"baseline_only{dir_suffix}"
-        if species == "mouse":
-            excel_path = repo_root / config["subjects"].get(
-                "excel_metadata",
-                "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
-            )
-            process_all_baseline_files_mouse(
-                data_directory=str(subj_source),
-                output_dir=str(baseline_raw_dir),
-                excel_path=str(excel_path),
-                overwrite=base_cfg["overwrite"],
-                apply_log10=APPLY_LOG10,
-                log10_eps=base_cfg["log10_eps"],
-                exclude_ids=exclude_ids,
-            )
-        else:
-            process_all_baseline_files(
-                str(subj_source),
-                str(baseline_raw_dir),
-                overwrite=base_cfg["overwrite"],
-                apply_log10=APPLY_LOG10,
-                log10_eps=base_cfg["log10_eps"],
-                exclude_ids=exclude_ids,
-            )
+        if run_baseline:
+            if species == "mouse":
+                excel_path = repo_root / config["subjects"].get(
+                    "excel_metadata",
+                    "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
+                )
+                process_all_baseline_files_mouse(
+                    data_directory=str(subj_source),
+                    output_dir=str(baseline_raw_dir),
+                    excel_path=str(excel_path),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
+            else:
+                process_all_baseline_files(
+                    str(subj_source),
+                    str(baseline_raw_dir),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
         baseline_raw_paths = list_nc(baseline_raw_dir, exclude_ids)
         print(f"  Baseline extracted: {len(baseline_raw_paths)} sessions")
 
@@ -162,7 +178,7 @@ def main() -> None:
         # Stage 1b — Extract active (task) frames (monkey only)
         # ---------------------------------------------------------------
         task_raw_paths: list[str] = []
-        if species != "mouse":
+        if run_task and species != "mouse":
             task_raw_dir = subj_deriv / f"task_only{dir_suffix}"
             process_all_task_files(
                 str(subj_source),
@@ -179,15 +195,16 @@ def main() -> None:
         # Stage 2 — Reorient and resize (baseline)
         # ---------------------------------------------------------------
         baseline_reoriented_dir = subj_deriv / f"baseline_only_reoriented_resized{dir_suffix}"
-        reorient_baseline_sessions(
-            baseline_raw_paths,
-            baseline_reoriented_dir,
-            rotate_k=geo_cfg["rotate_k"],
-            flip_session_ids=flip_ids,
-            target_size=geo_cfg["target_size"],
-            save_previews=geo_cfg["save_previews"],
-            overwrite=geo_cfg["overwrite"],
-        )
+        if run_baseline:
+            reorient_baseline_sessions(
+                baseline_raw_paths,
+                baseline_reoriented_dir,
+                rotate_k=geo_cfg["rotate_k"],
+                flip_session_ids=flip_ids,
+                target_size=geo_cfg["target_size"],
+                save_previews=geo_cfg["save_previews"],
+                overwrite=geo_cfg["overwrite"],
+            )
         baseline_reoriented_paths = list_nc(baseline_reoriented_dir)
         print(f"  Baseline reoriented: {len(baseline_reoriented_paths)} sessions")
 
@@ -213,16 +230,17 @@ def main() -> None:
         # Stage 3 — Standardize (baseline)
         # ---------------------------------------------------------------
         baseline_std_dir = subj_deriv / f"baseline_only_standardized{dir_suffix}"
-        standardize_stage_sessions(
-            baseline_reoriented_paths,
-            baseline_std_dir,
-            eps=std_cfg["eps"],
-            floor_percentile=std_cfg["floor_percentile"],
-            clip_abs=std_cfg["clip_abs"],
-            smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
-            causal=std_cfg.get("causal", False),
-            overwrite=std_cfg["overwrite"],
-        )
+        if run_baseline:
+            standardize_stage_sessions(
+                baseline_reoriented_paths,
+                baseline_std_dir,
+                eps=std_cfg["eps"],
+                floor_percentile=std_cfg["floor_percentile"],
+                clip_abs=std_cfg["clip_abs"],
+                smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
+                causal=std_cfg.get("causal", False),
+                overwrite=std_cfg["overwrite"],
+            )
         print(f"  Baseline standardized: {len(list_nc(baseline_std_dir))} sessions")
 
         # ---------------------------------------------------------------
@@ -242,19 +260,20 @@ def main() -> None:
         # ---------------------------------------------------------------
         # Stage 4 — Tissue segmentation (from baseline reoriented frames)
         # ---------------------------------------------------------------
-        print(f"\n=== Tissue segmentation for {subject} ===")
-        tissue_dir = subj_deriv / f"tissue_masks{dir_suffix}"
-        segment_all_sessions(
-            baseline_reoriented_paths,
-            tissue_dir,
-            vessel_intensity_percentile=tissue_cfg["vessel_intensity_percentile"],
-            vessel_cv_percentile=tissue_cfg["vessel_cv_percentile"],
-            min_vessel_pixels=tissue_cfg["min_vessel_pixels"],
-            closing_radius=tissue_cfg.get("closing_radius", 1),
-            overwrite=tissue_cfg["overwrite"],
-        )
-        print(f"  Tissue masks: {len(list_nc(tissue_dir))}")
-        plot_vessel_masks(tissue_dir, subject, subj_deriv / f"figures{dir_suffix}")
+        if run_baseline:
+            print(f"\n=== Tissue segmentation for {subject} ===")
+            tissue_dir = subj_deriv / f"tissue_masks{dir_suffix}"
+            segment_all_sessions(
+                baseline_reoriented_paths,
+                tissue_dir,
+                vessel_intensity_percentile=tissue_cfg["vessel_intensity_percentile"],
+                vessel_cv_percentile=tissue_cfg["vessel_cv_percentile"],
+                min_vessel_pixels=tissue_cfg["min_vessel_pixels"],
+                closing_radius=tissue_cfg.get("closing_radius", 1),
+                overwrite=tissue_cfg["overwrite"],
+            )
+            print(f"  Tissue masks: {len(list_nc(tissue_dir))}")
+            plot_vessel_masks(tissue_dir, subject, subj_deriv / f"figures{dir_suffix}")
 
 
 if __name__ == "__main__":
