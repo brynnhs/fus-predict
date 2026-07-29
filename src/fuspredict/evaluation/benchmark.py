@@ -199,6 +199,15 @@ def evaluate_predictor(
                         # its current mode (e.g. ConvLSTMPredictor with
                         # input_mode="frames").
                         pass
+                    except Exception as exc:
+                        # Don't let an oracle-decode bug discard the whole
+                        # session/model row — just leave oracle columns NaN.
+                        warnings.warn(
+                            f"{predictor.name}/{session.id} h{horizon}: "
+                            f"reconstruct_oracle failed ({exc}); oracle "
+                            "columns will be NaN.",
+                            stacklevel=2,
+                        )
                 if oracle_preds is not None:
                     rmse_oracle_full = _rmse(oracle_preds, targets)
                     if session.vessel_mask is not None:
@@ -366,6 +375,13 @@ def evaluate_predictor_on_task(
                         )
                     except AttributeError:
                         pass
+                    except Exception as exc:
+                        warnings.warn(
+                            f"{predictor.name}/{task_session.id} h{horizon}: "
+                            f"reconstruct_oracle failed ({exc}); oracle "
+                            "columns will be NaN.",
+                            stacklevel=2,
+                        )
                 if oracle_preds is not None:
                     rmse_oracle_full = _rmse(oracle_preds, targets)
                     if task_session.vessel_mask is not None:
