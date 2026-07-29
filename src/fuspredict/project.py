@@ -58,3 +58,24 @@ def get_excluded_sessions(
     """
     default_exclude = config["subjects"].get("sessions_to_exclude", {}).get(subject, [])
     return override if override is not None else default_exclude
+
+
+def resolve_standardized_and_mask_dirs(
+    repo_root: str | Path,
+    project_cfg: dict,
+    subject: str,
+    standardized_dir: str | Path | None = None,
+    mask_dir: str | Path | None = None,
+) -> tuple[Path, Path]:
+    """Resolve the standardized-sessions and tissue-mask directories for a subject.
+
+    Falls back to the standard preprocessing layout under
+    ``project_cfg["paths"]["preprocessing"]/<subject>/`` when
+    ``standardized_dir``/``mask_dir`` overrides are not given.
+    """
+    preproc_root = Path(repo_root) / project_cfg["paths"]["preprocessing"] / subject
+    resolved_standardized_dir = (
+        Path(standardized_dir) if standardized_dir else preproc_root / "baseline_only_standardized"
+    )
+    resolved_mask_dir = Path(mask_dir) if mask_dir else preproc_root / "tissue_masks"
+    return resolved_standardized_dir, resolved_mask_dir

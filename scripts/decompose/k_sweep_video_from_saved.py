@@ -25,7 +25,12 @@ from decompose import DecomposeConfig, DecompositionResult
 from decompose_sweep import render_k_sweep_reconstruction_video
 
 from fuspredict.data.loading import load_sessions
-from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
+from fuspredict.project import (
+    find_repo_root,
+    get_excluded_sessions,
+    load_project_config,
+    resolve_standardized_and_mask_dirs,
+)
 
 
 def main() -> None:
@@ -50,11 +55,9 @@ def main() -> None:
     subject = project_cfg['subjects']['all'][0]
     exclude_ids = get_excluded_sessions(project_cfg, subject, cfg.exclude_sessions)
 
-    preproc_root = repo_root / project_cfg['paths']['preprocessing'] / subject
-    standardized_dir = Path(cfg.standardized_dir) if cfg.standardized_dir else \
-        preproc_root / 'baseline_only_standardized'
-    mask_dir = Path(cfg.mask_dir) if cfg.mask_dir else \
-        preproc_root / 'tissue_masks'
+    standardized_dir, mask_dir = resolve_standardized_and_mask_dirs(
+        repo_root, project_cfg, subject, cfg.standardized_dir, cfg.mask_dir
+    )
 
     if args.sweep_dir:
         sweep_root = repo_root / args.sweep_dir / cfg.method

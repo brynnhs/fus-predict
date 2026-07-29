@@ -49,7 +49,12 @@ from fuspredict.autocorrelation import safe_temporal_corr_map
 from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
 from fuspredict.plot_utils import savefig
-from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
+from fuspredict.project import (
+    find_repo_root,
+    get_excluded_sessions,
+    load_project_config,
+    resolve_standardized_and_mask_dirs,
+)
 
 matplotlib.use('Agg')
 
@@ -1138,11 +1143,9 @@ def main() -> None:
     subject = project_cfg['subjects']['all'][0]
     exclude_ids = get_excluded_sessions(project_cfg, subject, cfg.exclude_sessions)
 
-    preproc_root = repo_root / project_cfg['paths']['preprocessing'] / subject
-    standardized_dir = Path(cfg.standardized_dir) if cfg.standardized_dir else \
-        preproc_root / 'baseline_only_standardized'
-    mask_dir = Path(cfg.mask_dir) if cfg.mask_dir else \
-        preproc_root / 'tissue_masks'
+    standardized_dir, mask_dir = resolve_standardized_and_mask_dirs(
+        repo_root, project_cfg, subject, cfg.standardized_dir, cfg.mask_dir
+    )
     out_dir = repo_root / cfg.output_dir / cfg.method
 
     sessions = load_sessions(standardized_dir, mask_dir=mask_dir, exclude_ids=exclude_ids)
