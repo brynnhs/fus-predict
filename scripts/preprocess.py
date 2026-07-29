@@ -30,11 +30,13 @@ import numpy as np
 import xarray as xr
 
 from fuspredict.preprocessing.geometry import reorient_baseline_sessions
-from fuspredict.preprocessing.io import (
-    process_all_baseline_files,
+from fuspredict.preprocessing.io_mouse import (
     process_all_baseline_files_mouse,
-    process_all_task_files,
     process_all_task_files_mouse,
+)
+from fuspredict.preprocessing.io_primate import (
+    process_all_baseline_files,
+    process_all_task_files,
 )
 from fuspredict.preprocessing.standardization import (
     standardize_stage_sessions,

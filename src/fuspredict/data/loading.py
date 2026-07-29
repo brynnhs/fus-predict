@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from fuspredict.preprocessing.io import LABEL_SIDECAR_SUFFIX, STAGE_STANDARDIZED, derive_session_id_from_path
+from fuspredict.preprocessing.io_common import LABEL_SIDECAR_SUFFIX, STAGE_STANDARDIZED, derive_session_id_from_path
 from fuspredict.data.session import Session
 
 # Glob pattern for standardized baseline files

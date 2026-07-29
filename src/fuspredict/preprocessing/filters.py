@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from .io import STAGE_FILTERED, derive_session_id_from_path, sanitize_attrs
+from .io_common import STAGE_FILTERED, derive_session_id_from_path, sanitize_attrs
 from ._utils import _validate_frames_thw
 
 
