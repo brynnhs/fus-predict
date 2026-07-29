@@ -50,10 +50,10 @@ from decompose import (
     fig_pooled_stability,
     fig_spatial_temporal_tradeoff,
     render_component_activation_video,
-    _write_frames_to_video,
-    _compute_acf,
-    _METHOD_COLOR,
-    _DOUBLE_COL,
+    write_frames_to_video,
+    compute_acf,
+    METHOD_COLOR,
+    DOUBLE_COL,
 )
 
 from fuspredict.data.loading import load_sessions
@@ -118,9 +118,9 @@ def fig_rmse_vs_k(rmse_by_k: dict[int, list[float]], method: str, out: Path,
     """
     ks = sorted(rmse_by_k)
     rng = np.random.default_rng(0)
-    color = _METHOD_COLOR[method]
+    color = METHOD_COLOR[method]
 
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.5), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL, DOUBLE_COL * 0.5), constrained_layout=True)
 
     for xi, k in enumerate(ks):
         vals = np.array(rmse_by_k[k], dtype=float)
@@ -152,9 +152,9 @@ def fig_acf1_vs_k(acf1_by_k: dict[int, list[float]], method: str, out: Path,
     """
     ks = sorted(acf1_by_k)
     rng = np.random.default_rng(0)
-    color = _METHOD_COLOR[method]
+    color = METHOD_COLOR[method]
 
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.5), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL, DOUBLE_COL * 0.5), constrained_layout=True)
 
     for xi, k in enumerate(ks):
         vals = np.array(acf1_by_k[k], dtype=float)
@@ -225,7 +225,7 @@ def render_k_sweep_reconstruction_video(session: Session, results_by_k: dict[int
         fig.suptitle(f'{session.id} — component sweep reconstruction ({label}) — frame {frame_i}/{session.n_frames}',
                      fontsize=9)
 
-    saved_path = _write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
+    saved_path = write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
     plt.close(fig)
     return saved_path
 
@@ -307,7 +307,7 @@ def main() -> None:
                 top_n_rmse_by_n[n][k].append(_top_n_reconstruction_rmse(session, result, n_eff))
             top_n_acf = min(args.top_n, result.spatial.shape[0])
             for comp_i in result.order[:top_n_acf]:
-                acf1_by_k[k].append(_compute_acf(result.timecourse[comp_i], 1))
+                acf1_by_k[k].append(compute_acf(result.timecourse[comp_i], 1))
             print(f"  {session.id} k={k}: saved {out_path.name}  "
                   f"(n_components={result.spatial.shape[0]}, T={result.timecourse.shape[1]}, "
                   f"recon_rmse={rmse:.4f})")

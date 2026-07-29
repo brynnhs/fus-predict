@@ -75,8 +75,8 @@ plt.rcParams.update({
     'legend.frameon':     False,
 })
 
-_DOUBLE_COL = 7.0
-_METHOD_COLOR = {'pca': '#3B82C4', 'ica': '#E8872A'}
+DOUBLE_COL = 7.0
+METHOD_COLOR = {'pca': '#3B82C4', 'ica': '#E8872A'}
 
 
 # ---------------------------------------------------------------------------
@@ -221,8 +221,8 @@ def select_n_components(X_calib: np.ndarray, candidates: list[int], seed: int,
 def fig_component_selection(candidates: np.ndarray, mean_rmse: np.ndarray, best_k: int,
                              session_id: str, out: Path) -> None:
     """Held-out reconstruction RMSE vs number of PCA components, with chosen k marked."""
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL * 0.6, _DOUBLE_COL * 0.4), constrained_layout=True)
-    ax.plot(candidates, mean_rmse, color=_METHOD_COLOR['pca'], marker='o', ms=3, lw=1.0)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL * 0.6, DOUBLE_COL * 0.4), constrained_layout=True)
+    ax.plot(candidates, mean_rmse, color=METHOD_COLOR['pca'], marker='o', ms=3, lw=1.0)
     ax.axvline(best_k, color='k', lw=0.8, ls='--', label=f'selected k={best_k}')
     ax.set_xlabel('Number of components (k)')
     ax.set_ylabel('Held-out reconstruction RMSE')
@@ -290,13 +290,13 @@ def select_n_components_parallel_analysis(X_calib: np.ndarray, seed: int, n_perm
 def fig_parallel_analysis(real_eigenvalues: np.ndarray, null_threshold: np.ndarray,
                            null_eigenvalues: np.ndarray, best_k: int, session_id: str, out: Path) -> None:
     """Real eigenvalue spectrum vs permutation-null threshold, with chosen k marked."""
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL * 0.6, _DOUBLE_COL * 0.4), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL * 0.6, DOUBLE_COL * 0.4), constrained_layout=True)
     x = np.arange(1, len(real_eigenvalues) + 1)
     null_lo = np.percentile(null_eigenvalues, 5, axis=0)
     null_hi = np.percentile(null_eigenvalues, 95, axis=0)
     ax.fill_between(x, null_lo, null_hi, color='0.7', alpha=0.4, label='null 5th-95th pct')
     ax.plot(x, null_threshold, color='k', lw=0.8, ls='--', label='null threshold')
-    ax.plot(x, real_eigenvalues, color=_METHOD_COLOR['pca'], marker='o', ms=2.5, lw=1.0, label='real eigenvalues')
+    ax.plot(x, real_eigenvalues, color=METHOD_COLOR['pca'], marker='o', ms=2.5, lw=1.0, label='real eigenvalues')
     ax.axvline(best_k, color='#D62728', lw=0.8, ls=':', label=f'selected k={best_k}')
     ax.set_xlabel('Component rank')
     ax.set_ylabel('Eigenvalue (explained variance)')
@@ -505,7 +505,7 @@ def _morans_i(spatial_map: np.ndarray) -> float:
     return float(n / W_total * numerator / denominator)
 
 
-def _compute_acf(time_course: np.ndarray, lag: int) -> float:
+def compute_acf(time_course: np.ndarray, lag: int) -> float:
     """Lag-k autocorrelation via Pearson r between x[:-lag] and x[lag:]. See hfc_pilot.py."""
     x = time_course - time_course.mean()
     if len(x) <= lag:
@@ -536,7 +536,7 @@ def fig_spatial_component_grid(result: DecompositionResult, top_n: int, out: Pat
     ncols = min(top_n, 4)
     nrows = int(np.ceil(top_n / ncols))
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.32 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(DOUBLE_COL, DOUBLE_COL * 0.32 * nrows),
                               constrained_layout=True)
     axes = np.array(axes).reshape(nrows, ncols)
 
@@ -569,11 +569,11 @@ def fig_timecourses(result: DecompositionResult, top_n: int, out: Path) -> None:
     top_idx = result.order[:top_n]
     t = np.arange(result.timecourse.shape[1]) / result.fps
 
-    fig, axes = plt.subplots(top_n, 1, figsize=(_DOUBLE_COL, 1.1 * top_n),
+    fig, axes = plt.subplots(top_n, 1, figsize=(DOUBLE_COL, 1.1 * top_n),
                               constrained_layout=True, sharex=True)
     axes = np.atleast_1d(axes)
 
-    color = _METHOD_COLOR[result.method]
+    color = METHOD_COLOR[result.method]
     for i, comp_i in enumerate(top_idx):
         ax = axes[i]
         ax.plot(t, result.timecourse[comp_i], color=color, lw=0.7)
@@ -591,8 +591,8 @@ def fig_ranking(result: DecompositionResult, out: Path) -> None:
     sorted_metric = result.ranking_metric[result.order]
     n = len(sorted_metric)
 
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.4), constrained_layout=True)
-    color = _METHOD_COLOR[result.method]
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL, DOUBLE_COL * 0.4), constrained_layout=True)
+    color = METHOD_COLOR[result.method]
     ax.bar(np.arange(n), sorted_metric, color=color, width=0.8)
     ax.set_xlabel('Component rank')
     if result.ranking_name == 'explained_variance_ratio':
@@ -623,7 +623,7 @@ def fig_pooled_ranking(results: list[DecompositionResult], out: Path) -> None:
         extra = matplotlib.colormaps['hsv'].resampled(len(results) - len(palette))
         palette = np.concatenate([palette, extra(np.arange(len(results) - len(palette)))[:, :3]])
 
-    fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.4),
+    fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(DOUBLE_COL, DOUBLE_COL * 0.4),
                                           constrained_layout=True)
     for i, r in enumerate(results):
         sorted_metric = r.ranking_metric[r.order]
@@ -656,11 +656,11 @@ def fig_pooled_k_selection(results: list[DecompositionResult], candidate_ks: lis
     method = results[0].method
     selected_k = np.array([r.spatial.shape[0] for r in results])
 
-    fig, (ax_hist, ax_evr) = plt.subplots(1, 2, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.4),
+    fig, (ax_hist, ax_evr) = plt.subplots(1, 2, figsize=(DOUBLE_COL, DOUBLE_COL * 0.4),
                                            constrained_layout=True)
 
     bins = np.arange(selected_k.min(), selected_k.max() + 2) - 0.5
-    ax_hist.hist(selected_k, bins=bins, color=_METHOD_COLOR[method], edgecolor='white')
+    ax_hist.hist(selected_k, bins=bins, color=METHOD_COLOR[method], edgecolor='white')
     ax_hist.axvline(np.median(selected_k), color='k', lw=0.8, ls='--',
                      label=f'median k={np.median(selected_k):.0f}')
     ax_hist.set_xlabel('Selected n_components (k)')
@@ -678,7 +678,7 @@ def fig_pooled_k_selection(results: list[DecompositionResult], candidate_ks: lis
                 k_eff = min(k, len(sorted_evr))
                 per_session.append(float(np.sum(sorted_evr[:k_eff])))
             mean_evr.append(np.mean(per_session))
-        ax_evr.plot(candidate_ks, mean_evr, color=_METHOD_COLOR[method], marker='o', ms=3, lw=1.0)
+        ax_evr.plot(candidate_ks, mean_evr, color=METHOD_COLOR[method], marker='o', ms=3, lw=1.0)
         for k, evr in zip(candidate_ks, mean_evr):
             ax_evr.annotate(f'{evr:.2f}', (k, evr), fontsize=6, xytext=(0, 4), textcoords='offset points',
                              ha='center')
@@ -709,7 +709,7 @@ def fig_psd_per_component(result: DecompositionResult, top_n: int, freq_gate_hz:
     ncols = min(top_n, 3)
     nrows = int(np.ceil(top_n / ncols))
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.35 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(DOUBLE_COL, DOUBLE_COL * 0.35 * nrows),
                               constrained_layout=True)
     axes = np.array(axes).reshape(nrows, ncols)
 
@@ -720,7 +720,7 @@ def fig_psd_per_component(result: DecompositionResult, top_n: int, freq_gate_hz:
         r, c = divmod(plot_i, ncols)
         ax = axes[r, c]
         freqs, psd = welch(result.timecourse[comp_i], fs=result.fps, nperseg=nperseg)
-        ax.plot(freqs, psd, color=_METHOD_COLOR[result.method], lw=1.0)
+        ax.plot(freqs, psd, color=METHOD_COLOR[result.method], lw=1.0)
         ax.axvline(freq_gate_hz, color='#2CA02C', lw=0.8, ls='--', label=f'gate {freq_gate_hz} Hz')
         ax.axvline(respiration_hz, color='#D62728', lw=0.8, ls=':', label=f'resp {respiration_hz} Hz')
         ax.set_title(f'C{comp_i + 1}', fontsize=7)
@@ -746,8 +746,8 @@ def fig_morans_vs_peakiness(result: DecompositionResult, out: Path) -> None:
     peakiness = np.array([_spectral_peakiness(result.timecourse[i], result.fps)[0]
                            for i in range(n_comp)])
 
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.55), constrained_layout=True)
-    ax.scatter(morans, peakiness, color=_METHOD_COLOR[result.method], s=16, alpha=0.75)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL, DOUBLE_COL * 0.55), constrained_layout=True)
+    ax.scatter(morans, peakiness, color=METHOD_COLOR[result.method], s=16, alpha=0.75)
     for i in range(n_comp):
         ax.annotate(str(i + 1), (morans[i], peakiness[i]), fontsize=6,
                     xytext=(2, 2), textcoords='offset points')
@@ -763,7 +763,7 @@ def fig_pca_vs_ica(result_pca: DecompositionResult, result_ica: DecompositionRes
                     n_components: int, out: Path) -> None:
     """Matched spatial maps, same session, same n_components, PCA vs ICA side-by-side."""
     n_show = min(n_components, len(result_pca.order), len(result_ica.order))
-    fig, axes = plt.subplots(2, n_show, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.32 * 2),
+    fig, axes = plt.subplots(2, n_show, figsize=(DOUBLE_COL, DOUBLE_COL * 0.32 * 2),
                               constrained_layout=True)
     axes = np.array(axes).reshape(2, n_show)
 
@@ -823,7 +823,7 @@ def fig_pooled_stability(results: list[DecompositionResult], top_n: int, out: Pa
     boundaries = np.cumsum([0] + block_sizes)
     centers = (boundaries[:-1] + boundaries[1:]) / 2 - 0.5
 
-    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(DOUBLE_COL, DOUBLE_COL), constrained_layout=True)
     im = ax.imshow(corr, cmap='RdBu_r', vmin=-1, vmax=1)
 
     # session-boundary separators make the block structure legible
@@ -871,7 +871,7 @@ def fig_spatial_temporal_tradeoff(results: list[DecompositionResult], top_n: int
         comps = r.order[:top_n]
         for comp_i in comps:
             pool_morans.append(_morans_i(r.spatial[comp_i]))
-            pool_acf.append([_compute_acf(r.timecourse[comp_i], lag) for lag in lags])
+            pool_acf.append([compute_acf(r.timecourse[comp_i], lag) for lag in lags])
             pool_sess.append(r.session_id)
     pool_morans = np.array(pool_morans)
     pool_acf = np.array(pool_acf)          # (N, len(lags))
@@ -882,7 +882,7 @@ def fig_spatial_temporal_tradeoff(results: list[DecompositionResult], top_n: int
     n_panels = len(lags)
     ncols = min(n_panels, 2)
     nrows = int(np.ceil(n_panels / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.55 * nrows),
+    fig, axes = plt.subplots(nrows, ncols, figsize=(DOUBLE_COL, DOUBLE_COL * 0.55 * nrows),
                               constrained_layout=True, squeeze=False)
 
     print(f"\n  {method.upper()} spatial/temporal tradeoff — Moran's I vs lag-k ACF:")
@@ -959,7 +959,7 @@ def fig_acf_reconstruction_across_sessions(results: list[DecompositionResult], t
     lags = list(lags)
     n_lags = len(lags)
 
-    fig, axes = plt.subplots(n_lags, 2, figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.5 * n_lags),
+    fig, axes = plt.subplots(n_lags, 2, figsize=(DOUBLE_COL, DOUBLE_COL * 0.5 * n_lags),
                               constrained_layout=True, squeeze=False)
     cmap = plt.colormaps['tab20'].resampled(len(results))
     sess_color = {r.session_id: cmap(i) for i, r in enumerate(results)}
@@ -1025,7 +1025,7 @@ def fig_acf_reconstruction_across_sessions(results: list[DecompositionResult], t
 # Video
 # ---------------------------------------------------------------------------
 
-def _write_frames_to_video(fig, update_fn, n_frames: int, out_path: Path, fps: float) -> Path:
+def write_frames_to_video(fig, update_fn, n_frames: int, out_path: Path, fps: float) -> Path:
     """
     Render n_frames via update_fn(frame_i) and write them to an .mp4 with
     cv2.VideoWriter — same approach as make_triplet_video in
@@ -1086,7 +1086,7 @@ def render_reconstruction_video(session: Session, result: DecompositionResult,
         ims[2].set_data(residual[frame_i])
         fig.suptitle(f'{session.id} — frame {frame_i}/{session.n_frames}', fontsize=9)
 
-    saved_path = _write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
+    saved_path = write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
     plt.close(fig)
     return saved_path
 
@@ -1107,7 +1107,7 @@ def render_component_activation_video(session: Session, result: DecompositionRes
     def update(frame_i):
         im.set_data(activation[frame_i])
 
-    saved_path = _write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
+    saved_path = write_frames_to_video(fig, update, session.n_frames, out_path, fps=session.fps * speed)
     plt.close(fig)
     return saved_path
 
