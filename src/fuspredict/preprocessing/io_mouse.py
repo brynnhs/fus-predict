@@ -381,7 +381,7 @@ def process_all_baseline_files_mouse(
     real_timing_ids: list[str] = []
 
     for scan_path in scan_files:
-        session_id = Path(scan_path).stem
+        session_id = Path(scan_path).with_suffix("").stem  # strips both .source and .scan
         if exclude_ids and session_id in exclude_ids:
             print(f"  Skipping excluded session {session_id}")
             continue
@@ -611,7 +611,7 @@ def process_all_task_files_mouse(
     saved_paths: list[str] = []
 
     for scan_path in scan_files:
-        session_id = Path(scan_path).stem
+        session_id = Path(scan_path).with_suffix("").stem  # strips both .source and .scan
         if exclude_ids and session_id in exclude_ids:
             print(f"  Skipping excluded session {session_id}")
             continue
