@@ -6,6 +6,7 @@ from fuspredict.evaluation.stats import (
     _aligned,
     bootstrap_median_diff_ci,
     compute_wilcoxon,
+    ljung_box_test,
     residual_acf_latent,
     rmse,
     significance_stars,
@@ -138,3 +139,20 @@ def test_residual_acf_latent_invalid_max_lag_raises():
 def test_residual_acf_latent_invalid_ndim_raises():
     with pytest.raises(ValueError):
         residual_acf_latent(np.zeros(10), max_lag=2)
+
+
+def test_ljung_box_test_returns_none_and_warns_when_statsmodels_missing(monkeypatch):
+    import sys
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "statsmodels.stats.diagnostic" or name.startswith("statsmodels"):
+            raise ImportError("simulated missing statsmodels")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.warns(UserWarning, match="statsmodels not available"):
+        result = ljung_box_test(np.zeros(20), lags=[1, 2])
+    assert result is None
