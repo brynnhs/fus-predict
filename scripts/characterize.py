@@ -52,7 +52,7 @@ from fuspredict.autocorrelation import (
 )
 from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
-from fuspredict.models.pca_ar import PatchLagPCAAR
+from fuspredict.models.pca_ar.patch_lag import PatchLagPCAAR
 from fuspredict.plot_utils import savefig
 from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
 
