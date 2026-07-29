@@ -26,6 +26,7 @@ ALL_MODEL_NAMES = [
     "rolling_mean",
     "pixel_ar",
     "patch_lag_pca_ar",
+    "patch_lag_ica_ar",
     "frozen_pca_ar",
     "frozen_ica_ar",
     "frozen_pca_rolling_mean",
