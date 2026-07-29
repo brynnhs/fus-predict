@@ -1,7 +1,8 @@
-# fus-predict configuration — mouse experiment
+# fus-predict configuration — gus experiment
 # ---------------------------------------------
-# Switch to this config with: python scripts/preprocess.py --config config_mouse.yml
-#                             python scripts/run_benchmark.py --config config_mouse.yml
+# Switch to this config with: python scripts/preprocess.py --config config_gus.yml
+#                             python scripts/run_benchmark.py --config config_gus.yml
+#                             python scripts/decompose/decompose.py --config config/decompose.yml --project-config config_gus.yml
 
 # ---------------------------------------------------------------------------
 # Paths (relative to repo root)
@@ -9,20 +10,19 @@
 paths:
   sourcedata:    data/sourcedata
   preprocessing: derivatives/preprocessing
-  modeling:      derivatives/modeling_mouse
+  modeling:      derivatives/modeling/gus
 
 # ---------------------------------------------------------------------------
 # Subjects
 # ---------------------------------------------------------------------------
 subjects:
   all:
-    - mouse
+    - gus
   sessions_to_exclude:
-    mouse:
-      - S1Amandine
-      - S2J_20260422_2Dscan_labeotech_test_whiskers_6
-  species: mouse
-  excel_metadata: data/sourcedata/mouse/Summary PeriFus experiments.xlsx
+    gus: []
+  species: monkey
+
+  excel_metadata: null
 
 # ---------------------------------------------------------------------------
 # Preprocessing
@@ -42,7 +42,7 @@ preprocessing:
     save_previews: true
     overwrite:   true
     flip_session_ids_by_subject:
-      mouse: []
+      gus: []
 
   filtering:
     enable_lowpass:     true
@@ -88,9 +88,7 @@ persistence_analysis:
 ar_analysis:
   patch_lag_pca_ar_patch_size: 14
   primary_session_id:          null   # set after first run
-  within_session_exclude:
-    - S1Amandine
-    - S2J_20260422_2Dscan_labeotech_test_whiskers_6
+  within_session_exclude: []
 
 modeling:
   frame_rate:    2.5

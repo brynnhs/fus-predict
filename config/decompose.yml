@@ -1,0 +1,33 @@
+# config/decompose.yaml
+# ----------------------
+# Config for scripts/decompose.py — frozen-basis PCA/ICA decomposition.
+
+method: pca                  # pca | ica
+n_components: 6               # int, "auto_cv" (cross-validated reconstruction error — tends to
+                              # overselect since more components never hurt reconstruction), or
+                              # "auto_pa" (parallel analysis — keeps components above a permutation
+                              # noise floor; recommended). "auto" is an alias for "auto_pa".
+                              # ICA reuses the same k since FastICA whitens to n_components via an
+                              # internal PCA step. auto_cv candidates come from n_components_candidates.
+pa_percentile: 99.0           # auto_pa: null percentile threshold (higher = stricter = smaller k)
+pa_n_permutations: 100        # auto_pa: number of per-pixel-shuffle permutations for the null
+fit_mode: per_session         # per_session | pooled (pooled is an open question — see decompose.py)
+calibration_frames: 999999    # causal frozen-basis fit window (frames, not seconds); clamped to
+                               # session length in decompose.py, so this fits on the entire session
+
+mask: full_frame             # full_frame | vessel_only (uses corrected two-criterion mask)
+freq_gate_hz: 0.2              # QPP respiration exclusion gate
+
+ica_algorithm:
+  algorithm: parallel
+  fun: logcosh
+
+# Paths default to derivatives/preprocessing/{standardized,tissue_masks} and
+# derivatives/decompose if left null.
+standardized_dir: null
+mask_dir: null
+output_dir: derivatives/decompose
+
+sessions: null                # null = all non-excluded sessions
+exclude_sessions: [Se05022020, Se22102019, Se25082020, Se27072020, Se31012020]
+seed: 42

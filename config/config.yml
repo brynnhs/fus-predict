@@ -30,7 +30,7 @@ preprocessing:
   baseline:
     apply_log10: true
     log10_eps:   1.0e-6
-    overwrite:   true
+    overwrite:   false
 
   geometry:
     rotate_k:    -1
@@ -38,6 +38,7 @@ preprocessing:
     save_previews: true
     overwrite:   true
     flip_session_ids_by_subject:
+      gus: [Gu05082020, Gu30032021, Gu30042021]
       secundo: [Se04092020, Se01092020, Se25082020, Se03092020, Se27082020, Se04082020, Se24022020]
 
   filtering:
@@ -56,16 +57,21 @@ preprocessing:
   standardization:
     eps:               1.0e-8
     floor_percentile:  10.0
-    clip_abs:          3.0
+    clip_abs:          6.0
     smooth_kernel_sizes: [3, 5, 7]
     causal:            true
     overwrite:         true
 
   tissue_segmentation:
-    vessel_intensity_percentile: 75.0
-    vessel_cv_percentile:        75.0
-    min_vessel_pixels:           2500
-    closing_radius:              1
+    method:                      roi   # imclose | cv_threshold | roi
+    vessel_intensity_percentile: 70.0
+    closing_radius:              2
+    min_component_pixels:        1000
+    # cv_threshold params (used when method: cv_threshold)
+    cv_percentile:               5.0      # min CV percentile to be considered vessel
+    # roi params (used when method: roi)
+    roi_intensity_percentile:    85.0     # low threshold to capture all brain tissue
+    roi_closing_radius:          25       # large closing to bridge gaps and smooth boundary
     overwrite:                   true
 
 # ---------------------------------------------------------------------------
@@ -74,7 +80,7 @@ preprocessing:
 persistence_analysis:
   min_var:               1.0e-6
   fps_fallback:          2.5
-  max_acf_lag:           20
+  max_acf_lag:          100
   example_target_frame:  10
   pearson_rolling_window: 20
   acf_patch_sizes: [1, 5, 10, 14, 20, 28]
@@ -85,7 +91,7 @@ persistence_analysis:
 # ---------------------------------------------------------------------------
 ar_analysis:
   patch_lag_pca_ar_patch_size: 14
-  primary_session_id:          Se25082020
+  primary_session_id:          Se01092020
   # Must match subjects.sessions_to_exclude.secundo
   within_session_exclude: [Se05022020, Se22102019, Se25082020, Se27072020, Se31012020]
 
@@ -93,25 +99,66 @@ modeling:
   frame_rate:    2.5
   train_frac:    0.8
   n_lags:        10
-  horizons:      [1, 5, 10]
+  horizons:      [1]
 
   pixel_ar:
     ridge_lambda: 0.01
 
-  full_frame_pca_ar:
-    n_components: 10
-    ridge_lambda: 0.01
-
   patch_lag_pca_ar:
     patch_size:   14
-    n_components: 10
+    n_components: 6
     ridge_lambda: 0.01
+
+  patch_lag_ica_ar:
+    patch_size:   14
+    n_components: 6
+    ridge_lambda: 0.01
+    ica_algorithm:
+      algorithm: parallel
+      fun: logcosh
+
+  frozen_basis_ar:
+    method:       pca   # pca | ica — basis frozen on the full baseline period
+    n_components: 6
+    ridge_lambda: 0.01
+    ica_algorithm:
+      algorithm: parallel
+      fun: logcosh
 
   convlstm:
     hidden_channels:  32
     kernel_size:      3
     n_layers:         1
     forget_gate_bias: 1.0
+    learning_rate:    3.0e-4
+    batch_size:       128
+    n_epochs:         50
+    grad_clip_norm:   1.0
+
+  convlstm_pca_latent:
+    hidden_channels:  32
+    n_components:     6
+    learning_rate:    3.0e-4
+    batch_size:       128
+    n_epochs:         50
+    grad_clip_norm:   1.0
+
+  convlstm_ica_latent:
+    hidden_channels:  32
+    n_components:     6
+    learning_rate:    3.0e-4
+    batch_size:       128
+    n_epochs:         50
+    grad_clip_norm:   1.0
+    ica_algorithm:
+      algorithm: parallel
+      fun: logcosh
+
+  patch_pca_convlstm:
+    patch_size:       14
+    n_components:     6
+    hidden_channels:  32
+    kernel_size:      3
     learning_rate:    3.0e-4
     batch_size:       128
     n_epochs:         50
