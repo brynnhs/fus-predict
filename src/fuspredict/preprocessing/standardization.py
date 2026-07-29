@@ -182,33 +182,6 @@ def standardize_frames_pixelwise_causal(
     return frames_z, mean_map, std_map
 
 
-def inverse_standardize(
-    frames_z: np.ndarray,
-    mean_map: np.ndarray,
-    std_map: np.ndarray,
-) -> np.ndarray:
-    """
-    Invert z-score standardization: original ≈ frames_z * std_map + mean_map.
-
-    Parameters
-    ----------
-    frames_z : np.ndarray, shape (T, H, W)
-        Standardized frames.
-    mean_map : np.ndarray, shape (H, W)
-        Per-pixel mean from standardize_frames_pixelwise.
-    std_map : np.ndarray, shape (H, W)
-        Per-pixel std from standardize_frames_pixelwise.
-
-    Returns
-    -------
-    np.ndarray, shape (T, H, W), float32
-    """
-    arr  = np.asarray(frames_z, dtype=np.float32)
-    mean = np.asarray(mean_map, dtype=np.float32)
-    std  = np.asarray(std_map,  dtype=np.float32)
-    return (arr * std[np.newaxis] + mean[np.newaxis]).astype(np.float32)
-
-
 # ---------------------------------------------------------------------------
 # Pipeline entry point
 # ---------------------------------------------------------------------------

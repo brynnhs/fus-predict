@@ -36,11 +36,6 @@ def strel_disk(radius: int) -> np.ndarray:
     return (X**2 + Y**2) <= radius**2
 
 
-def strel_square(width: int) -> np.ndarray:
-    """Square structuring element, like strel('square', width)."""
-    return np.ones((width, width), dtype=bool)
-
-
 def imclose(image: np.ndarray, selem: np.ndarray) -> np.ndarray:
     """Morphological closing of `image` by structuring element `selem`.
 

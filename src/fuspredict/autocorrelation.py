@@ -69,30 +69,6 @@ def robust_limits(
     return (lo, hi)
 
 
-def session_global_signal(frames_3d: np.ndarray) -> np.ndarray | None:
-    """
-    Compute the mean-trace global signal from (T, H, W) frames.
-
-    Returns the mean-centered finite trace, or None if fewer than 2
-    finite frames exist or the signal has near-zero variance.
-    """
-    arr = np.asarray(frames_3d, dtype=np.float32)
-    if arr.ndim != 3:
-        raise ValueError(f"Expected (T, H, W), got shape {arr.shape}")
-
-    x      = np.nanmean(arr, axis=(1, 2)).astype(np.float64)
-    finite = np.isfinite(x)
-    x      = x[finite]
-
-    if x.size < 2:
-        return None
-
-    x = x - np.mean(x)
-    if not np.isfinite(np.var(x)) or np.var(x) < 1e-12:
-        return None
-
-    return x
-
 
 # ---------------------------------------------------------------------------
 # Temporal autocorrelation
