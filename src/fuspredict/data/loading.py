@@ -85,36 +85,35 @@ def load_session(
     if not nc_path.exists():
         raise FileNotFoundError(f"Session file not found: {nc_path}")
 
-    ds = xr.open_dataset(nc_path)
+    with xr.open_dataset(nc_path) as ds:
+        if "frames" not in ds:
+            raise KeyError(f"{nc_path.name}: dataset has no 'frames' variable")
 
-    if "frames" not in ds:
-        raise KeyError(f"{nc_path.name}: dataset has no 'frames' variable")
+        frames_da = ds["frames"]
+        if frames_da.ndim != 3:
+            raise ValueError(
+                f"{nc_path.name}: 'frames' must be 3-D (time, x, y), "
+                f"got shape {frames_da.shape}"
+            )
 
-    frames_da = ds["frames"]
-    if frames_da.ndim != 3:
-        raise ValueError(
-            f"{nc_path.name}: 'frames' must be 3-D (time, x, y), "
-            f"got shape {frames_da.shape}"
+        # Verify z-scored flag (stored as "True"/"False" string by sanitize_attrs)
+        zscored_raw = ds.attrs.get("zscored", "False")
+        if str(zscored_raw).strip().lower() != "true":
+            raise ValueError(
+                f"{nc_path.name}: dataset is not z-scored "
+                f"(zscored attr = {zscored_raw!r})"
+            )
+
+        frames = frames_da.values.astype(np.float32)
+
+        session_id = str(
+            ds.attrs.get("session_id") or derive_session_id_from_path(nc_path)
         )
+        fps = float(ds.attrs.get("frame_rate", 2.5))
 
-    # Verify z-scored flag (stored as "True"/"False" string by sanitize_attrs)
-    zscored_raw = ds.attrs.get("zscored", "False")
-    if str(zscored_raw).strip().lower() != "true":
-        raise ValueError(
-            f"{nc_path.name}: dataset is not z-scored "
-            f"(zscored attr = {zscored_raw!r})"
-        )
-
-    frames = frames_da.values.astype(np.float32)
-
-    session_id = str(
-        ds.attrs.get("session_id") or derive_session_id_from_path(nc_path)
-    )
-    fps = float(ds.attrs.get("frame_rate", 2.5))
-
-    # Collect metadata: all attrs except fields already on Session
-    _skip = {"session_id", "frame_rate", "zscored"}
-    metadata = {k: v for k, v in ds.attrs.items() if k not in _skip}
+        # Collect metadata: all attrs except fields already on Session
+        _skip = {"session_id", "frame_rate", "zscored"}
+        metadata = {k: v for k, v in ds.attrs.items() if k not in _skip}
 
     vessel_mask = _load_vessel_mask(session_id, mask_dir)
 
@@ -347,15 +346,15 @@ def _load_vessel_mask(
         return None
 
     try:
-        ds = xr.open_dataset(mask_path)
-        if "vessel_mask" not in ds:
-            warnings.warn(
-                f"Mask file {mask_path.name} has no 'vessel_mask' variable; "
-                "ignoring.",
-                stacklevel=3,
-            )
-            return None
-        return ds["vessel_mask"].values.astype(bool)
+        with xr.open_dataset(mask_path) as ds:
+            if "vessel_mask" not in ds:
+                warnings.warn(
+                    f"Mask file {mask_path.name} has no 'vessel_mask' variable; "
+                    "ignoring.",
+                    stacklevel=3,
+                )
+                return None
+            return ds["vessel_mask"].values.astype(bool)
     except Exception as exc:
         warnings.warn(
             f"Could not load mask {mask_path.name}: {exc}; ignoring.",

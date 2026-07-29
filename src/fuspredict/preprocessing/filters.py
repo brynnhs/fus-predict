@@ -268,7 +268,8 @@ def filter_reoriented_sessions(
     outputs: list[str] = []
     for in_path_str in in_nc_paths:
         in_path = Path(in_path_str)
-        da = xr.open_dataarray(in_path)
+        with xr.open_dataarray(in_path) as _da:
+            da = _da.load()
 
         session_id = da.attrs.get("session_id") or derive_session_id_from_path(in_path)
         out_path = out_root / f"baseline_{session_id}_{STAGE_FILTERED}.nc"

@@ -246,7 +246,8 @@ def standardize_stage_sessions(
 
     for in_path_str in in_nc_paths:
         in_path = Path(in_path_str)
-        da      = xr.open_dataarray(in_path)
+        with xr.open_dataarray(in_path) as _da:
+            da = _da.load()
 
         stage_in   = str(da.attrs.get("stage", ""))
         if stage_in not in _SUPPORTED_INPUT_STAGES:
@@ -360,7 +361,8 @@ def standardize_task_sessions_with_baseline_stats(
 
     for task_path_str in task_nc_paths:
         task_path  = Path(task_path_str)
-        task_da    = xr.open_dataarray(task_path)
+        with xr.open_dataarray(task_path) as _task_da:
+            task_da = _task_da.load()
         session_id = task_da.attrs.get("session_id") or derive_session_id_from_path(task_path)
 
         # Find matching baseline standardized file (unfiltered variant)

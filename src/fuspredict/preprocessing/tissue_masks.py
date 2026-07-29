@@ -187,7 +187,8 @@ def segment_all_sessions(
     outputs: list[str] = []
     for in_path_str in in_nc_paths:
         in_path = Path(in_path_str)
-        da      = xr.open_dataarray(in_path)
+        with xr.open_dataarray(in_path) as _da:
+            da = _da.load()
 
         stage_in = str(da.attrs.get("stage", ""))
         if stage_in != STAGE_REORIENTED_RESIZED:
