@@ -1,7 +1,7 @@
 # fus-predict configuration — mouse experiment
 # ---------------------------------------------
 # Switch to this config with: python scripts/preprocess.py --config config_mouse.yml
-#                             python scripts/run_benchmark.py --config config_mouse.yml
+#                             python scripts/benchmarking/run_benchmark.py --config config_mouse.yml
 
 # ---------------------------------------------------------------------------
 # Paths (relative to repo root)

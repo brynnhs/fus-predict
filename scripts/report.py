@@ -14,7 +14,7 @@ Usage
 -----
 Run the full report after a benchmark run::
 
-    python scripts/run_benchmark.py --save-predictions
+    python scripts/benchmarking/run_benchmark.py --save-predictions
     python scripts/report.py
 
 Skip the prediction-dependent spatial figures (no --save-predictions needed)::
@@ -700,7 +700,7 @@ def main() -> None:
     for p in (results_path, aggregate_path):
         if not p.exists():
             raise FileNotFoundError(
-                f"{p} not found.\nRun scripts/run_benchmark.py first."
+                f"{p} not found.\nRun scripts/benchmarking/run_benchmark.py first."
             )
 
     print(f"Loading results from {results_dir} ...")

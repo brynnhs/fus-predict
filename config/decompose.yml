@@ -1,6 +1,6 @@
 # config/decompose.yaml
 # ----------------------
-# Config for scripts/decompose.py — frozen-basis PCA/ICA decomposition.
+# Config for scripts/decomposition/decompose.py — frozen-basis PCA/ICA decomposition.
 
 method: pca                  # pca | ica
 n_components: 6               # int, "auto_cv" (cross-validated reconstruction error — tends to

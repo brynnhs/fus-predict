@@ -26,7 +26,7 @@ derivatives/preprocessing/<subject>/
     baseline_only_standardized/      ← z-scored (T, H, W) sessions, what models train on
     tissue_masks/                    ← vessel vs. parenchyma masks per session
         │
-        ▼  scripts/run_benchmark.py
+        ▼  scripts/benchmarking/run_benchmark.py
 derivatives/modeling/benchmark/
     per_session_results.csv          ← RMSE per (model, session, horizon)
     aggregate_summary.csv
@@ -48,7 +48,7 @@ All three pipeline stages read their parameters from [`config/config.yml`](confi
 python scripts/preprocess.py
 
 # 2. Fit and evaluate all models across all sessions
-python scripts/run_benchmark.py --save-predictions
+python scripts/benchmarking/run_benchmark.py --save-predictions
 
 # 3. Generate comparison figures and Wilcoxon stats
 python scripts/report.py
@@ -60,7 +60,7 @@ python scripts/characterize.py
 Quick smoke test instead of a full run:
 
 ```bash
-python scripts/run_benchmark.py --models zero,rolling_mean --n-sessions 2
+python scripts/benchmarking/run_benchmark.py --models zero,rolling_mean --n-sessions 2
 python scripts/report.py --skip-spatial
 ```
 
@@ -85,6 +85,6 @@ Every `Predictor` (in `models/`) implements `fit(train_frames, horizons)` / `pre
 
 ## Where things live
 
-- Models to compare: edit `ALL_MODEL_NAMES` and `build_predictor_factories` in `scripts/run_benchmark.py`.
+- Models to compare: edit `ALL_MODEL_NAMES` and `build_predictor_factories` in `scripts/benchmarking/run_benchmark.py`.
 - Hyperparameters, paths, excluded sessions: `config/config.yml`.
 - Adding a new model: implement the `Predictor` protocol (`models/base.py`) in a new file under `models/`, register it in `build_predictor_factories`.
