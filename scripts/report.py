@@ -106,17 +106,30 @@ def parse_args(default_session_id: str) -> argparse.Namespace:
         description="Generate comparison figures and statistics from a benchmark run.",
     )
     parser.add_argument(
+        "--eval-mode",
+        choices=["temporal_split", "full_baseline"],
+        default="temporal_split",
+        help="Which benchmark run to report on: 'temporal_split' (default) reads "
+        "derivatives/modeling/benchmark/, the output of run_benchmark.py "
+        "(train/test split within one session). 'full_baseline' reads "
+        "derivatives/modeling/task_benchmark/, the output of run_task_benchmark.py "
+        "(fit on the full baseline recording, score on the matched task recording). "
+        "Only sets the results-dir/out-dir defaults; ignored if either is passed explicitly.",
+    )
+    parser.add_argument(
         "--results-dir",
         type=str,
         default=None,
         help="Directory containing per_session_results.csv and aggregate_summary.csv "
-        "(default: derivatives/modeling/benchmark).",
+        "(default: derivatives/modeling/benchmark, or task_benchmark for "
+        "--eval-mode full_baseline).",
     )
     parser.add_argument(
         "--out-dir",
         type=str,
         default=None,
-        help="Directory to write figures and stats (default: derivatives/modeling/report).",
+        help="Directory to write figures and stats (default: derivatives/modeling/report, "
+        "or task_report for --eval-mode full_baseline).",
     )
     parser.add_argument(
         "--session-id",
@@ -682,15 +695,22 @@ def main() -> None:
     kernel_label = args.kernel_size  # e.g. "3", "5", "none", or None
     kernel_suffix = f"_k{kernel_label}" if kernel_label is not None else ""
 
+    default_results_dirname = (
+        "task_benchmark" if args.eval_mode == "full_baseline" else "benchmark"
+    )
+    default_report_dirname = (
+        "task_report" if args.eval_mode == "full_baseline" else "report"
+    )
+
     results_dir = (
         Path(args.results_dir)
         if args.results_dir is not None
-        else repo_root / config["paths"]["modeling"] / "benchmark"
+        else repo_root / config["paths"]["modeling"] / default_results_dirname
     )
     out_dir = (
         Path(args.out_dir)
         if args.out_dir is not None
-        else repo_root / config["paths"]["modeling"] / f"report{kernel_suffix}"
+        else repo_root / config["paths"]["modeling"] / f"{default_report_dirname}{kernel_suffix}"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
