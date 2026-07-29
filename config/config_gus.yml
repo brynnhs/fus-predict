@@ -87,7 +87,7 @@ persistence_analysis:
 # ---------------------------------------------------------------------------
 ar_analysis:
   patch_lag_pca_ar_patch_size: 14
-  primary_session_id:          null   # set after first run
+  primary_session_id:          Gu03092020
   within_session_exclude: []
 
 modeling:
