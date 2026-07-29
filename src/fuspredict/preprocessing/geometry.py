@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from .io import (
+from .io_common import (
     STAGE_REORIENTED_RESIZED,
     derive_session_id_from_path,
     sanitize_attrs,
@@ -243,7 +243,7 @@ def reorient_baseline_sessions(
             name=session_id,
         )
         da_out.to_netcdf(out_path)
-        print(f"  Reoriented {in_path.name} → {out_path.name}")
+        print(f"  Reoriented {in_path.name} -> {out_path.name}")
 
         if save_previews:
             preview_root.mkdir(parents=True, exist_ok=True)
