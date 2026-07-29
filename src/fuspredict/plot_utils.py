@@ -14,4 +14,4 @@ def savefig(fig: plt.Figure, stem: Path, dpi: int = 180) -> None:
     stem = Path(stem)
     stem.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(stem.with_suffix('.png'), dpi=dpi, bbox_inches='tight')
-    fig.savefig(stem.with_suffix('.pdf'), bbox_inches='tight')
+    fig.savefig(stem.with_suffix('.pdf'), dpi=dpi, bbox_inches='tight')
