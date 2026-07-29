@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from .io import (
+from .io_common import (
     STAGE_FILTERED,
     STAGE_REORIENTED_RESIZED,
     STAGE_STANDARDIZED,
@@ -177,7 +177,7 @@ def standardize_frames_pixelwise_causal(
         frames_z[t] = z
 
     mean_map = running_mean.astype(np.float32)
-    std_map  = running_std.astype(np.float32)
+    std_map  = std_floored.astype(np.float32)
 
     return frames_z, mean_map, std_map
 
@@ -327,7 +327,7 @@ def standardize_stage_sessions(
         if overwrite or not base_path.exists():
             ds = _make_dataset(frames_z)
             ds.to_netcdf(base_path)
-            print(f"  Standardized {in_path.name} → {base_path.name}")
+            print(f"  Standardized {in_path.name} -> {base_path.name}")
         saved.append(str(base_path))
 
         # Smoothed variants (applied to z-scored frames)
@@ -339,7 +339,7 @@ def standardize_stage_sessions(
                 frames_smoothed = spatial_mean_filter_frames(frames_z, ks)
                 ds = _make_dataset(frames_smoothed, kernel_size=ks)
                 ds.to_netcdf(sm_path)
-                print(f"  Standardized (smooth {ks}x{ks}) {in_path.name} → {sm_path.name}")
+                print(f"  Standardized (smooth {ks}x{ks}) {in_path.name} -> {sm_path.name}")
             saved.append(str(sm_path))
 
     return saved
@@ -440,7 +440,7 @@ def standardize_task_sessions_with_baseline_stats(
         out_path = out_root / out_name
         if overwrite or not out_path.exists():
             ds.to_netcdf(out_path)
-            print(f"  Standardized (baseline stats) {task_path.name} → {out_path.name}")
+            print(f"  Standardized (baseline stats) {task_path.name} -> {out_path.name}")
         saved.append(str(out_path))
 
         # Smoothed variants (applied to z-scored frames)
@@ -461,7 +461,7 @@ def standardize_task_sessions_with_baseline_stats(
                     attrs=sm_attrs,
                 )
                 sm_ds.to_netcdf(sm_path)
-                print(f"  Standardized (baseline stats, smooth {ks}x{ks}) {task_path.name} → {sm_path.name}")
+                print(f"  Standardized (baseline stats, smooth {ks}x{ks}) {task_path.name} -> {sm_path.name}")
             saved.append(str(sm_path))
 
     return saved
