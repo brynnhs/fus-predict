@@ -34,13 +34,14 @@ from fuspredict.preprocessing.io import (
     process_all_baseline_files,
     process_all_baseline_files_mouse,
     process_all_task_files,
+    process_all_task_files_mouse,
 )
 from fuspredict.preprocessing.standardization import (
     standardize_stage_sessions,
     standardize_task_sessions_with_baseline_stats,
 )
 from fuspredict.preprocessing.tissue_masks import segment_all_sessions
-from fuspredict.project import find_repo_root, load_project_config
+from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,7 +138,7 @@ def main() -> None:
 
     for subject in subjects:
         subj_deriv  = deriv_root / subject
-        exclude_ids = set(config["subjects"].get("sessions_to_exclude", {}).get(subject, []))
+        exclude_ids = set(get_excluded_sessions(config, subject))
 
         print(f"\n=== Processing subject {subject} (species={species}) ===")
 
@@ -178,19 +179,34 @@ def main() -> None:
         print(f"  Baseline extracted: {len(baseline_raw_paths)} sessions")
 
         # ---------------------------------------------------------------
-        # Stage 1b — Extract active (task) frames (monkey only)
+        # Stage 1b — Extract active (task) frames
         # ---------------------------------------------------------------
         task_raw_paths: list[str] = []
-        if run_task and species != "mouse":
+        if run_task:
             task_raw_dir = subj_deriv / f"task_only{dir_suffix}"
-            process_all_task_files(
-                str(subj_source),
-                str(task_raw_dir),
-                overwrite=base_cfg["overwrite"],
-                apply_log10=APPLY_LOG10,
-                log10_eps=base_cfg["log10_eps"],
-                exclude_ids=exclude_ids,
-            )
+            if species == "mouse":
+                excel_path = repo_root / config["subjects"].get(
+                    "excel_metadata",
+                    "data/sourcedata/mouse/Summary PeriFus experiments.xlsx",
+                )
+                process_all_task_files_mouse(
+                    data_directory=str(subj_source),
+                    output_dir=str(task_raw_dir),
+                    excel_path=str(excel_path),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
+            else:
+                process_all_task_files(
+                    str(subj_source),
+                    str(task_raw_dir),
+                    overwrite=base_cfg["overwrite"],
+                    apply_log10=APPLY_LOG10,
+                    log10_eps=base_cfg["log10_eps"],
+                    exclude_ids=exclude_ids,
+                )
             task_raw_paths = list_nc(task_raw_dir, exclude_ids)
             print(f"  Active extracted: {len(task_raw_paths)} sessions")
 
@@ -233,18 +249,36 @@ def main() -> None:
         # Stage 3 — Standardize (baseline)
         # ---------------------------------------------------------------
         baseline_std_dir = subj_deriv / f"baseline_only_standardized{dir_suffix}"
+        kernel_sizes = list(std_cfg.get("smooth_kernel_sizes", []))
         if run_baseline:
+            # Base (no smoothing)
             standardize_stage_sessions(
                 baseline_reoriented_paths,
                 baseline_std_dir,
                 eps=std_cfg["eps"],
                 floor_percentile=std_cfg["floor_percentile"],
                 clip_abs=std_cfg["clip_abs"],
-                smooth_kernel_sizes=std_cfg["smooth_kernel_sizes"],
+                smooth_kernel_sizes=[],
                 causal=std_cfg.get("causal", False),
                 overwrite=std_cfg["overwrite"],
             )
+            # One subdir per smoothing kernel
+            for ks in kernel_sizes:
+                ks_dir = subj_deriv / f"baseline_only_standardized_k{ks}{dir_suffix}"
+                standardize_stage_sessions(
+                    baseline_reoriented_paths,
+                    ks_dir,
+                    eps=std_cfg["eps"],
+                    floor_percentile=std_cfg["floor_percentile"],
+                    clip_abs=std_cfg["clip_abs"],
+                    smooth_kernel_sizes=[ks],
+                    causal=std_cfg.get("causal", False),
+                    overwrite=std_cfg["overwrite"],
+                )
         print(f"  Baseline standardized: {len(list_nc(baseline_std_dir))} sessions")
+        for ks in kernel_sizes:
+            ks_dir = subj_deriv / f"baseline_only_standardized_k{ks}{dir_suffix}"
+            print(f"  Baseline standardized (k={ks}): {len(list_nc(ks_dir))} sessions")
 
         # ---------------------------------------------------------------
         # Stage 3b — Standardize (active) using baseline stats
@@ -270,10 +304,13 @@ def main() -> None:
             segment_all_sessions(
                 baseline_reoriented_paths,
                 tissue_dir,
+                method=tissue_cfg.get("method", "imclose"),
                 vessel_intensity_percentile=tissue_cfg["vessel_intensity_percentile"],
-                vessel_cv_percentile=tissue_cfg["vessel_cv_percentile"],
-                min_vessel_pixels=tissue_cfg["min_vessel_pixels"],
-                closing_radius=tissue_cfg.get("closing_radius", 1),
+                closing_radius=tissue_cfg.get("closing_radius", 3),
+                min_component_pixels=tissue_cfg.get("min_component_pixels", 50),
+                cv_percentile=tissue_cfg.get("cv_percentile", 60.0),
+                roi_intensity_percentile=tissue_cfg.get("roi_intensity_percentile", 30.0),
+                roi_closing_radius=tissue_cfg.get("roi_closing_radius", 15),
                 overwrite=tissue_cfg["overwrite"],
             )
             print(f"  Tissue masks: {len(list_nc(tissue_dir))}")

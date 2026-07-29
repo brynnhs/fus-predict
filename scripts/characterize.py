@@ -18,18 +18,26 @@ Figures produced per session:
   fig5_patch_acf_sweep        — median ACF ± IQR per patch size
   fig6_rolling_mean_std       — rolling mean and rolling std (stationarity)
   fig7_within_patch_residual_corr — within-patch residual structure
+  fig8_kernel_acf_sweep       — mean per-pixel ACF ± SD for box-filter kernel
+                                sizes 1/3/5/7 (spatial smoothing sweep)
+
+Cross-session figures also include:
+  figX6_kernel_acf_cross_session — cross-session mean ± SD ACF per kernel size
+  figX7_kernel_paired_diff       — paired ACF difference, 7×7 minus 1×1, across sessions
 
 Cached arrays / tables (per session sub-directory):
   corr_map.npy, mask.npy, varx_map.npy, vard_map.npy, ratio_map.npy
   gmean.npy, gstd.npy, lg_mean.npy, av_mean.npy
   lag1_summary.csv, variance_summary.csv, rolling_stats.csv
   patch_acf_<size>.npy  (one per patch size in acf_patch_sizes)
+  kernel_acf_k<size>.npy  (one per box-filter kernel size)
 
 Usage:
   python scripts/characterize.py
 """
 
 import argparse
+import warnings
 from pathlib import Path
 
 import matplotlib
@@ -46,7 +54,7 @@ from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
 from fuspredict.models.pca_ar import PatchLagPCAAR
 from fuspredict.plot_utils import savefig
-from fuspredict.project import find_repo_root, load_project_config
+from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
 
 matplotlib.use('Agg')
 
@@ -100,6 +108,55 @@ def _add_scale_bar(ax, pixel_size_mm: float = 0.1, bar_mm: float = 1.0,
     ax.plot([x0, x0 + bar_px], [y0, y0], lw=2, color=color, solid_capstyle='butt')
     ax.text(x0 + bar_px / 2, y0, f'{bar_mm:g} mm',
             color=color, ha='center', va='bottom', fontsize=7)
+
+
+KERNEL_SIZES = [1, 3, 5, 7]
+KERNEL_COLORS = ['#A0A0A0', '#9B59B6', '#3B82C4', '#E8872A']
+
+
+def _box_smooth(frames: np.ndarray, k: int) -> np.ndarray:
+    """Apply a k×k uniform box filter spatially to each frame in (T, H, W).
+
+    NaN pixels (outside FOV) are filled with 0 before filtering so they don't
+    poison neighbouring pixels, then restored as NaN afterwards.
+    """
+    if k <= 1:
+        return frames
+    from scipy.ndimage import uniform_filter
+    f = frames.astype(np.float64)
+    nan_mask = np.isnan(f)
+    f[nan_mask] = 0.0
+    smoothed = uniform_filter(f, size=(1, k, k))
+    smoothed[nan_mask] = np.nan
+    return smoothed
+
+
+def _per_pixel_acf_matrix(frames: np.ndarray, mask: np.ndarray, max_lag: int) -> np.ndarray:
+    """Return full (n_px, max_lag) per-pixel ACF matrix."""
+    ys, xs = np.where(mask)
+    n_px = len(ys)
+    if n_px == 0:
+        return np.full((0, max_lag), np.nan)
+
+    px = frames[:, ys, xs].astype(np.float64)
+    px -= px.mean(axis=0, keepdims=True)
+    c0 = np.einsum('tp,tp->p', px, px)
+    acf_mat = np.empty((n_px, max_lag), dtype=np.float64)
+    for lag in range(1, max_lag + 1):
+        clag = np.einsum('tp,tp->p', px[lag:], px[:-lag])
+        with np.errstate(invalid='ignore', divide='ignore'):
+            acf_mat[:, lag - 1] = np.where(c0 > 0, clag / c0, np.nan)
+    return acf_mat
+
+
+def _per_pixel_mean_acf(frames: np.ndarray, mask: np.ndarray, max_lag: int) -> np.ndarray:
+    """Mean per-pixel ACF across masked pixels, shape (max_lag,)."""
+    acf_mat = _per_pixel_acf_matrix(frames, mask, max_lag)
+    if acf_mat.shape[0] == 0:
+        return np.full(max_lag, np.nan)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmean(acf_mat, axis=0)
 
 
 def _patch_mean_acf(frames: np.ndarray, patch_radius: int, max_lag: int) -> np.ndarray:
@@ -397,6 +454,37 @@ def _fig5_patch_acf_sweep(fr, mask, patch_sizes, frame_rate_hz, sout, max_lag: i
     plt.close(fig)
 
 
+def _fig8_kernel_acf_sweep(fr, mask, frame_rate_hz, sout, max_lag: int = 20) -> None:
+    """Fig 8: mean per-pixel ACF ± SD for box-filter kernel sizes 1/3/5/7."""
+    lag_s = np.arange(1, max_lag + 1, dtype=float) / frame_rate_hz
+
+    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.45), constrained_layout=True)
+
+    for k, color in zip(KERNEL_SIZES, KERNEL_COLORS):
+        smoothed = _box_smooth(fr, k)
+        acf_mat  = _per_pixel_acf_matrix(smoothed, mask, max_lag)
+        if acf_mat.shape[0] == 0:
+            continue
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            mean_acf = np.nanmean(acf_mat, axis=0)
+            std_acf  = np.nanstd(acf_mat,  axis=0)
+        label = 'no kernel (1×1)' if k == 1 else f'{k}×{k} box'
+        ax.plot(lag_s, mean_acf, color=color, lw=1.8, label=label)
+        ax.fill_between(lag_s, mean_acf - std_acf, mean_acf + std_acf, color=color, alpha=0.18)
+        np.save(sout / f'kernel_acf_k{k}.npy', mean_acf)
+
+    ax.axhline(0, color='0.65', lw=0.7, ls='--')
+    ax.set_xlabel('Lag (s)')
+    ax.set_ylabel('Mean per-pixel ACF')
+    ax.set_xlim(0, max_lag / frame_rate_hz)
+    ax.set_ylim(-0.15, 0.80)
+    ax.set_title('Per-pixel ACF by spatial kernel size  (shading = ±1 SD across pixels)', fontsize=9)
+    ax.legend(loc='upper right')
+    savefig(fig, sout / 'fig8_kernel_acf_sweep')
+    plt.close(fig)
+
+
 def _fig6_rolling_mean_std(gmean, frame_rate_hz, sout, window: int = 20) -> None:
     """Fig 6: rolling mean and rolling std of the analysis-mask mean."""
     if not np.any(np.isfinite(gmean)):
@@ -635,6 +723,7 @@ def run_session(session: Session, mask: np.ndarray, sout: Path, cfg: dict) -> No
     _fig5_patch_acf_sweep(fr, mask, PATCH_SZ, fps, sout)
     _fig6_rolling_mean_std(gmean, fps, sout, window=ROLL_WIN)
     _fig7_within_patch_residual_corr(fr, mask, MODEL_PATCH_SZ, sout)
+    _fig8_kernel_acf_sweep(fr, mask, fps, sout)
 
     print(f'  {session.id} → {sout}')
 
@@ -871,13 +960,105 @@ def _figX_variance_ratio_across_sessions(session_dirs: list[Path], out: Path) ->
                     color=[cmap(i) for i in order], s=25, zorder=3)
     axes[1].axvline(1.0,          color=_NAVY,   ls='--', lw=1, label='ratio = 1')
     axes[1].axvline(grand_median, color=_CI_RED, ls='--', lw=1, label=f'grand median {grand_median:.2f}')
-    axes[1].set_yticks(range(len(order)))
-    axes[1].set_yticklabels([sids[i] for i in order], fontsize=7)
+    if len(order) <= 30:
+        axes[1].set_yticks(range(len(order)))
+        axes[1].set_yticklabels([sids[i] for i in order], fontsize=7)
+    else:
+        axes[1].set_ylabel(f'Session rank (n={len(order)})')
+        axes[1].set_yticks([])
     axes[1].set_xlabel('Median Var(Δx) / Var(x)')
     axes[1].legend(fontsize=7)
     axes[1].set_title('Per-session median', fontsize=8)
 
     savefig(fig, out / 'figX5_variance_ratio_across_sessions')
+    plt.close(fig)
+
+
+def _figX_kernel_acf_cross_session(sessions: list[Session], masks: dict, out: Path,
+                                    max_lag: int = 20) -> None:
+    """Fig X6: cross-session mean ± SD per-pixel ACF, one line per kernel size."""
+    all_acfs: dict[int, list[np.ndarray]] = {k: [] for k in KERNEL_SIZES}
+    for s in sessions:
+        mask = masks[s.id]
+        if mask.sum() == 0 or s.frames.shape[0] < max_lag + 2:
+            continue
+        for k in KERNEL_SIZES:
+            smoothed = _box_smooth(s.frames, k)
+            all_acfs[k].append(_per_pixel_mean_acf(smoothed, mask, max_lag))
+
+    n_sessions = max((len(v) for v in all_acfs.values()), default=0)
+    if n_sessions == 0:
+        print('  FigX6: no sessions with valid frames, skipping.')
+        return
+
+    fps   = sessions[0].fps
+    lag_s = np.arange(1, max_lag + 1, dtype=float) / fps
+
+    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.45), constrained_layout=True)
+    for k, color in zip(KERNEL_SIZES, KERNEL_COLORS):
+        curves = np.array(all_acfs[k])
+        if curves.shape[0] == 0:
+            continue
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            grand_mean = np.nanmean(curves, axis=0)
+            grand_std  = np.nanstd(curves,  axis=0)
+        label = 'no kernel (1×1)' if k == 1 else f'{k}×{k} box'
+        ax.plot(lag_s, grand_mean, color=color, lw=1.8, label=label)
+        ax.fill_between(lag_s, grand_mean - grand_std, grand_mean + grand_std, color=color, alpha=0.18)
+
+    ax.axhline(0, color='0.65', lw=0.7, ls='--')
+    ax.set_xlabel('Lag (s)')
+    ax.set_ylabel('Mean per-pixel ACF')
+    ax.set_xlim(0, max_lag / fps)
+    ax.set_ylim(-0.15, 0.80)
+    ax.set_title(f'Per-pixel ACF by kernel size — cross-session mean ± SD  (n={n_sessions})', fontsize=9)
+    ax.legend(loc='upper right')
+    savefig(fig, out / 'figX6_kernel_acf_cross_session')
+    plt.close(fig)
+
+
+def _figX_kernel_paired_diff(sessions: list[Session], masks: dict, out: Path,
+                              max_lag: int = 20) -> None:
+    """Fig X7: paired per-session ACF difference, 7×7 box minus 1×1 (no kernel)."""
+    diffs: list[np.ndarray] = []
+    for s in sessions:
+        mask = masks[s.id]
+        if mask.sum() == 0 or s.frames.shape[0] < max_lag + 2:
+            continue
+        acf_1 = _per_pixel_mean_acf(_box_smooth(s.frames, 1), mask, max_lag)
+        acf_7 = _per_pixel_mean_acf(_box_smooth(s.frames, 7), mask, max_lag)
+        if np.any(np.isfinite(acf_1)) and np.any(np.isfinite(acf_7)):
+            diffs.append(acf_7 - acf_1)
+
+    if not diffs:
+        print('  FigX7: no valid sessions, skipping.')
+        return
+
+    D      = np.array(diffs)
+    n      = D.shape[0]
+    mean_d = np.nanmean(D, axis=0)
+    std_d  = np.nanstd(D,  axis=0, ddof=1) if n > 1 else np.zeros_like(mean_d)
+    ci95   = 1.96 * std_d / np.sqrt(n)
+
+    fps   = sessions[0].fps
+    lag_s = np.arange(1, max_lag + 1, dtype=float) / fps
+
+    fig, ax = plt.subplots(figsize=(_DOUBLE_COL, _DOUBLE_COL * 0.45), constrained_layout=True)
+    ax.fill_between(lag_s, mean_d - std_d, mean_d + std_d, color='#E8872A', alpha=0.12, label='±1 SD')
+    ax.fill_between(lag_s, mean_d - ci95, mean_d + ci95, color='#E8872A', alpha=0.30, label='±95% CI of mean')
+    ax.plot(lag_s, mean_d, color='#E8872A', lw=1.8, label='Grand mean')
+    ax.axhline(0, color='0.4', lw=1.0, ls='--')
+    ax.set_xlabel('Lag (s)')
+    ax.set_ylabel('ΔACF  (7×7 minus 1×1)')
+    ax.set_xlim(0, max_lag / fps)
+    ax.set_title(
+        f'Paired ACF difference: 7×7 − 1×1  (n={n} sessions)\n'
+        'CI clearing zero = smoothing lift is real across sessions',
+        fontsize=9,
+    )
+    ax.legend(loc='upper right')
+    savefig(fig, out / 'figX7_kernel_paired_diff')
     plt.close(fig)
 
 
@@ -933,8 +1114,12 @@ def _figX_acf_distribution_across_sessions(session_dirs: list[Path], out: Path) 
                     color=[cmap(i) for i in order], s=25, zorder=3)
     axes[1].axvline(float(np.median(medians)), color=_NAVY, ls='--', lw=1,
                     label=f'grand median {np.median(medians):.3f}')
-    axes[1].set_yticks(range(len(order)))
-    axes[1].set_yticklabels([sids[i] for i in order], fontsize=7)
+    if len(order) <= 30:
+        axes[1].set_yticks(range(len(order)))
+        axes[1].set_yticklabels([sids[i] for i in order], fontsize=7)
+    else:
+        axes[1].set_ylabel(f'Session rank (n={len(order)})')
+        axes[1].set_yticks([])
     axes[1].set_xlabel('Median lag-1 ACF')
     axes[1].legend(fontsize=7)
     axes[1].set_title('Per-session median', fontsize=8)
@@ -953,6 +1138,12 @@ def _parse_args() -> argparse.Namespace:
         "--config",
         default="config.yml",
         help="Config filename inside config/ (default: config.yml).",
+    )
+    parser.add_argument(
+        "--excel-timed-only",
+        action="store_true",
+        help="Skip sessions where no matching Excel stimulus timing was found "
+             "(i.e. sessions where all frames were treated as baseline).",
     )
     return parser.parse_args()
 
@@ -975,10 +1166,7 @@ def main() -> None:
         )
     subject = all_subjects[0]
     EXCLUDED_SESSIONS = set(
-        arcfg.get(
-            'within_session_exclude',
-            config['subjects'].get('sessions_to_exclude', {}).get(subject, []),
-        )
+        get_excluded_sessions(config, subject, arcfg.get('within_session_exclude'))
     )
 
     preproc_root     = repo_root / config['paths']['preprocessing']
@@ -988,6 +1176,19 @@ def main() -> None:
     sessions = load_sessions(standardized_dir, mask_dir=mask_dir, exclude_ids=list(EXCLUDED_SESSIONS))
     assert sessions, f"No sessions loaded from {standardized_dir}"
     print(f"Found {len(sessions)} sessions")
+
+    if args.excel_timed_only:
+        def _has_excel_timing(s: Session) -> bool:
+            n_total    = s.metadata.get('n_total_frames')
+            n_baseline = s.metadata.get('n_baseline_frames')
+            if n_total is None or n_baseline is None:
+                return True  # unknown provenance — don't silently drop
+            return int(n_baseline) != int(n_total)
+
+        before = len(sessions)
+        sessions = [s for s in sessions if _has_excel_timing(s)]
+        print(f"--excel-timed-only: kept {len(sessions)}/{before} sessions "
+              f"(dropped sessions where all frames were treated as baseline)")
 
     MIN_VAR = pa['min_var']
     masks = {s.id: _compute_analysis_mask(s, MIN_VAR) for s in sessions}
@@ -1016,6 +1217,8 @@ def main() -> None:
     _figX_acf_mean_map(session_dirs, OUT)
     _figX_variance_ratio_across_sessions(session_dirs, OUT)
     _figX_acf_distribution_across_sessions(session_dirs, OUT)
+    _figX_kernel_acf_cross_session(sessions, masks, OUT)
+    _figX_kernel_paired_diff(sessions, masks, OUT)
 
     floor_dfs = [pd.read_csv(sd / 'rmse_floor.csv')
                  for sd in session_dirs if (sd / 'rmse_floor.csv').exists()]

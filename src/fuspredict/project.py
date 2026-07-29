@@ -43,3 +43,18 @@ def load_project_config(
     config_path = root / "config" / config_name
     with config_path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def get_excluded_sessions(
+    config: dict,
+    subject: str,
+    override: list[str] | None = None,
+) -> list[str]:
+    """Resolve the excluded-session-id list for a subject.
+
+    Looks up ``config["subjects"]["sessions_to_exclude"][subject]``.
+    If ``override`` is given (e.g. from a CLI flag), it takes precedence
+    over the config value entirely.
+    """
+    default_exclude = config["subjects"].get("sessions_to_exclude", {}).get(subject, [])
+    return override if override is not None else default_exclude
