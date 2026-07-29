@@ -1,59 +1,59 @@
 """
-run_benchmark.py
------------------
-Single entrypoint script for the fUS frame-prediction model comparison.
+run_task_benchmark.py
+----------------------
+Train each model on the full baseline recording, evaluate on the matched
+task-period recording.
 
-This is the only place in the pipeline that touches argparse, config
-loading, and filesystem paths — every other module (``fuspredict.models``,
-``fuspredict.evaluation``, ``fuspredict.data``) is a pure library that knows
-nothing about the repo layout or CLI.
+Same model registry and config as run_benchmark.py, but instead of
+splitting one session into a train/test portion of the same period, each
+model is fit on the entirety of `baseline_only_standardized/` and scored
+against `task_only_standardized/`. Context windows for the first few task
+frames are built by bridging in the tail of the baseline recording (see
+evaluate_predictor_on_task), so every task frame gets a full lag-length
+causal context.
 
 Usage
 -----
 Run the full benchmark with default settings::
 
-    python scripts/run_benchmark.py
+    python scripts/benchmarking/run_task_benchmark.py
 
 Run a quick smoke test on a couple of sessions with two models::
 
-    python scripts/run_benchmark.py --models zero,rolling_mean --n-sessions 2
+    python scripts/benchmarking/run_task_benchmark.py --models zero,rolling_mean --n-sessions 2
 
-Predictions are saved alongside the results table by default. Skip that with::
+Save raw prediction arrays alongside the results table::
 
-    python scripts/run_benchmark.py --no-save-predictions
+    python scripts/benchmarking/run_task_benchmark.py --save-predictions
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 
 import pandas as pd
 
 from fuspredict.data.loading import load_sessions
 from fuspredict.data.session import Session
-from fuspredict.evaluation.benchmark import aggregate_results, print_summary_table, run_benchmark
+from fuspredict.evaluation.benchmark import aggregate_results, print_summary_table, run_task_benchmark
 from fuspredict.models.base import Predictor
 from fuspredict.models.registry import ALL_MODEL_NAMES, build_predictor_factories
 from fuspredict.project import find_repo_root, get_excluded_sessions, load_project_config
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
 def parse_args() -> argparse.Namespace:
     """
-    Parse command-line arguments for the benchmark run.
+    Parse command-line arguments for the baseline-train/task-test benchmark.
 
     Returns
+    
     -------
     argparse.Namespace
         Parsed arguments: ``models``, ``n_sessions``, ``save_predictions``,
-        ``overwrite``.
+        ``overwrite``, ``config``, ``kernel_sizes``.
     """
     parser = argparse.ArgumentParser(
-        description="Run the fus_predict model comparison benchmark.",
+        description="Train on all baseline frames, evaluate on task frames.",
     )
     parser.add_argument(
         "--models",
@@ -71,10 +71,9 @@ def parse_args() -> argparse.Namespace:
         help="Optional cap on the number of sessions to load, for quick testing.",
     )
     parser.add_argument(
-        "--no-save-predictions",
-        dest="save_predictions",
-        action="store_false",
-        help="Skip saving raw ground-truth/prediction arrays to the predictions directory.",
+        "--save-predictions",
+        action="store_true",
+        help="Save raw ground-truth/prediction arrays to the predictions directory.",
     )
     parser.add_argument(
         "--overwrite",
@@ -101,31 +100,16 @@ def parse_args() -> argparse.Namespace:
         default="",
         help=(
             "Suffix appended to the output directory name "
-            "('benchmark' -> 'benchmark_h5'). Use this when running multiple "
-            "horizons back to back, since results are otherwise keyed only "
-            "by kernel size and would overwrite each other. Default: none."
+            "('task_benchmark' -> 'task_benchmark_h5'). Use this when running "
+            "multiple horizons back to back, since results are otherwise keyed "
+            "only by kernel size and would overwrite each other. Default: none."
         ),
     )
-    parser.add_argument(
-        "--no-require-real-baseline-timing",
-        dest="require_real_baseline_timing",
-        action="store_false",
-        help=(
-            "Include sessions whose baseline period was never confirmed by "
-            "real stimulus timing (i.e. the whole recording was assumed to "
-            "be baseline as a fallback). Default: excluded."
-        ),
-    )
-    parser.set_defaults(save_predictions=True, require_real_baseline_timing=True)
     return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
 def main() -> None:
-    """Run the full benchmark pipeline end-to-end."""
+    """Run the baseline-train/task-test benchmark pipeline end-to-end."""
     args = parse_args()
     requested_models = [m.strip() for m in args.models.split(",") if m.strip()]
     unknown = set(requested_models) - set(ALL_MODEL_NAMES)
@@ -144,13 +128,13 @@ def main() -> None:
     all_subjects = config["subjects"]["all"]
     if len(all_subjects) != 1:
         raise ValueError(
-            f"run_benchmark.py supports exactly one subject; config lists {all_subjects}. "
+            f"run_task_benchmark.py supports exactly one subject; config lists {all_subjects}. "
             "Run once per config or extend this script to loop over subjects."
         )
     subject = all_subjects[0]
     preprocessing_root = repo_root / config["paths"]["preprocessing"] / subject
     mask_dir = preprocessing_root / "tissue_masks"
-    benchmark_dir = repo_root / config["paths"]["modeling"] / f"benchmark{args.output_suffix}"
+    benchmark_dir = repo_root / config["paths"]["modeling"] / f"task_benchmark{args.output_suffix}"
     benchmark_dir.mkdir(parents=True, exist_ok=True)
 
     results_path = benchmark_dir / "per_session_results.csv"
@@ -170,51 +154,50 @@ def main() -> None:
 
     exclude_ids = get_excluded_sessions(config, subject, ar_cfg.get("within_session_exclude"))
 
-    real_timing_ids: set[str] | None = None
-    if args.require_real_baseline_timing:
-        manifest_path = preprocessing_root / "baseline_only" / "sessions_with_real_baseline_timing.json"
-        if manifest_path.exists():
-            with open(manifest_path) as f:
-                real_timing_ids = set(json.load(f))
-            print(
-                f"Restricting to {len(real_timing_ids)} session(s) with real "
-                f"baseline timing (from {manifest_path})"
-            )
-        else:
-            print(
-                f"--require-real-baseline-timing set but no manifest found at "
-                f"{manifest_path}; not filtering."
-            )
-
     all_per_session: list[pd.DataFrame] = []
 
     for token in kernel_tokens:
         if token in ("none", "0"):
             std_dir = preprocessing_root / "baseline_only_standardized"
+            task_std_dir = preprocessing_root / "task_only_standardized"
             glob_pattern = None  # default: baseline_*_unfiltered_standardized.nc
+            task_glob_pattern = "task_*_unfiltered_standardized_zscore.nc"
             kernel_label = 0
         else:
             ks = int(token)
             std_dir = preprocessing_root / f"baseline_only_standardized_k{ks}"
+            task_std_dir = preprocessing_root / f"task_only_standardized_k{ks}"
             glob_pattern = f"baseline_*_unfiltered_standardized_zscore_smooth{ks}x{ks}.nc"
+            task_glob_pattern = f"task_*_unfiltered_standardized_zscore_smooth{ks}x{ks}.nc"
             kernel_label = ks
 
-        print(f"\n=== Kernel size: {token} — loading from {std_dir} ===")
+        if not task_std_dir.is_dir():
+            print(f"\n=== Kernel size: {token} — no task dir at {task_std_dir}, skipping ===")
+            continue
+
+        print(f"\n=== Kernel size: {token} — loading baseline from {std_dir}, task from {task_std_dir} ===")
         sessions: list[Session] = load_sessions(
             standardized_dir=std_dir,
             mask_dir=mask_dir,
             exclude_ids=exclude_ids,
             glob_pattern=glob_pattern,
         )
-        if real_timing_ids is not None:
-            sessions = [s for s in sessions if s.id in real_timing_ids]
         if args.n_sessions is not None:
             sessions = sessions[: args.n_sessions]
-        print(f"Loaded {len(sessions)} session(s): {[s.id for s in sessions]}")
+        print(f"Loaded {len(sessions)} baseline session(s): {[s.id for s in sessions]}")
 
         if not sessions:
-            print(f"  No sessions found for kernel={token}, skipping.")
+            print(f"  No baseline sessions found for kernel={token}, skipping.")
             continue
+
+        task_sessions_list = load_sessions(
+            standardized_dir=task_std_dir,
+            mask_dir=mask_dir,
+            exclude_ids=exclude_ids,
+            glob_pattern=task_glob_pattern,
+        )
+        task_sessions = {s.id: s for s in task_sessions_list}
+        print(f"Loaded {len(task_sessions)} task session(s): {sorted(task_sessions)}")
 
         factories = build_predictor_factories(modeling_cfg)
         predictors: list[Predictor] = [factories[name]() for name in requested_models]
@@ -226,12 +209,12 @@ def main() -> None:
         if args.overwrite and kernel_results_path.exists():
             kernel_results_path.unlink()
 
-        df = run_benchmark(
+        df = run_task_benchmark(
             predictors=predictors,
             sessions=sessions,
+            task_sessions=task_sessions,
             lag=modeling_cfg["n_lags"],
             horizons=modeling_cfg["horizons"],
-            train_frac=modeling_cfg["train_frac"],
             results_path=kernel_results_path,
             predictions_dir=predictions_dir,
         )

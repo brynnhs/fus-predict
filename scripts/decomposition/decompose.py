@@ -1,5 +1,5 @@
 """
-scripts/decompose.py
+scripts/decomposition/decompose.py
 ---------------------
 Fit a frozen spatial basis (PCA or ICA) per session on a causal calibration
 window, then apply it to the full recording to get component time-courses.
@@ -24,12 +24,12 @@ Pipeline
 
 Usage
 -----
-    python scripts/decompose/decompose.py --config config/decompose.yaml
-    python scripts/decompose/decompose.py --config config/decompose.yaml --sessions Se01092020
-    python scripts/decompose/decompose.py --config config/decompose.yaml --no-figures
-    python scripts/decompose/decompose.py --config config/decompose.yaml --video reconstruction --video-session Se01092020
-    python scripts/decompose/decompose.py --config config/decompose.yaml --video component --video-session Se01092020 --video-component 2
-    python scripts/decompose/decompose.py --config config/decompose.yaml --video all-components --video-session Se01092020
+    python scripts/decomposition/decompose.py --config config/decompose.yaml
+    python scripts/decomposition/decompose.py --config config/decompose.yaml --sessions Se01092020
+    python scripts/decomposition/decompose.py --config config/decompose.yaml --no-figures
+    python scripts/decomposition/decompose.py --config config/decompose.yaml --video reconstruction --video-session Se01092020
+    python scripts/decomposition/decompose.py --config config/decompose.yaml --video component --video-session Se01092020 --video-component 2
+    python scripts/decomposition/decompose.py --config config/decompose.yaml --video all-components --video-session Se01092020
 """
 
 from __future__ import annotations

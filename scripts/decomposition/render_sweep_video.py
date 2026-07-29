@@ -1,5 +1,5 @@
 """
-scripts/decompose/k_sweep_video_from_saved.py
+scripts/decomposition/render_sweep_video.py
 -----------------------------------------------
 Rebuild the combined k-sweep reconstruction video (one panel per k) from an
 already-completed decompose_sweep.py run, without refitting anything. Reads
@@ -9,8 +9,8 @@ calls the same render_k_sweep_reconstruction_video used by decompose_sweep.py.
 
 Usage
 -----
-    python scripts/decompose/k_sweep_video_from_saved.py --config config/decompose.yaml --video-session Se01092020
-    python scripts/decompose/k_sweep_video_from_saved.py --config config/decompose.yaml --video-session Se01092020 --component-sizes 2 10 40 100
+    python scripts/decomposition/render_sweep_video.py --config config/decompose.yaml --video-session Se01092020
+    python scripts/decomposition/render_sweep_video.py --config config/decompose.yaml --video-session Se01092020 --component-sizes 2 10 40 100
 """
 
 from __future__ import annotations

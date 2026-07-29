@@ -1,5 +1,5 @@
 """
-scripts/decompose/decompose_sweep.py
+scripts/decomposition/decompose_sweep.py
 -------------------------------------
 Same as decompose.py, but instead of choosing n_components automatically
 (auto_cv / auto_pa), sweeps a fixed list of candidate component counts and
@@ -18,11 +18,11 @@ Pipeline
 
 Usage
 -----
-    python scripts/decompose/decompose_sweep.py --config config/decompose.yaml
-    python scripts/decompose/decompose_sweep.py --config config/decompose.yaml --component-sizes 2 5 10 20 40
-    python scripts/decompose/decompose_sweep.py --config config/decompose.yaml --sessions Se01092020
-    python scripts/decompose/decompose_sweep.py --config config/decompose.yaml --no-figures
-    python scripts/decompose/decompose_sweep.py --config config/decompose.yaml --video-session Se01092020
+    python scripts/decomposition/decompose_sweep.py --config config/decompose.yaml
+    python scripts/decomposition/decompose_sweep.py --config config/decompose.yaml --component-sizes 2 5 10 20 40
+    python scripts/decomposition/decompose_sweep.py --config config/decompose.yaml --sessions Se01092020
+    python scripts/decomposition/decompose_sweep.py --config config/decompose.yaml --no-figures
+    python scripts/decomposition/decompose_sweep.py --config config/decompose.yaml --video-session Se01092020
 """
 
 from __future__ import annotations

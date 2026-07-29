@@ -1,5 +1,5 @@
 """
-report_kernel_comparison.py
+scripts/benchmarking/kernel_sweep_report.py
 ---------------------------
 Compare benchmark results across kernel sizes (k0, k3, k5, k7) at horizon=1.
 
@@ -15,9 +15,9 @@ produces three figures:
 
 Usage
 -----
-    python scripts/report_kernel_comparison.py
-    python scripts/report_kernel_comparison.py --results-dir derivatives/modeling/benchmark
-    python scripts/report_kernel_comparison.py --out-dir derivatives/modeling/report_kernel_comparison
+    python scripts/benchmarking/kernel_sweep_report.py
+    python scripts/benchmarking/kernel_sweep_report.py --results-dir derivatives/modeling/benchmark
+    python scripts/benchmarking/kernel_sweep_report.py --out-dir derivatives/modeling/report_kernel_comparison
 """
 
 from __future__ import annotations
