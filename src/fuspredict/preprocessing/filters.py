@@ -299,6 +299,6 @@ def filter_reoriented_sessions(
         )
         da_filtered.to_netcdf(out_path)
         outputs.append(str(out_path))
-        print(f"  Filtered {in_path.name} → {out_path.name}")
+        print(f"  Filtered {in_path.name} -> {out_path.name}")
 
     return outputs
