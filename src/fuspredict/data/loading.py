@@ -284,6 +284,48 @@ def load_label_sidecar(
 
 
 # ---------------------------------------------------------------------------
+# Prediction loading
+# ---------------------------------------------------------------------------
+
+def load_predictions(
+    predictions_dir: str | Path,
+    model: str,
+    session_id: str,
+    horizon: int,
+    gt_key: str = "gt",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load (gt, pred) arrays for one (model, session, horizon) triple.
+
+    Parameters
+    ----------
+    predictions_dir : Path
+        Directory containing ``{model}_{session_id}_h{horizon}.npz`` files,
+        each with arrays ``gt`` and ``pred`` (and, for latent-reconstruction
+        models, ``oracle_gt``) of shape ``(N, H, W)``.
+    model : str
+        Model name, as used in the npz filename.
+    session_id : str
+        Session ID, as used in the npz filename.
+    horizon : int
+        Prediction horizon, as used in the npz filename.
+    gt_key : str
+        Which array to use as "ground truth" (default ``"gt"``, the raw
+        target frames). Pass ``"oracle_gt"`` to instead use the model's
+        PCA/ICA-oracle reconstruction of the target frames, for comparing
+        latent-reconstruction models against each other in reconstructed
+        space rather than raw pixel space.
+
+    Returns
+    -------
+    (gt, pred) : tuple of np.ndarray
+        Ground-truth and predicted frame stacks, each ``(N, H, W)`` float32.
+    """
+    path = Path(predictions_dir) / f"{model}_{session_id}_h{horizon}.npz"
+    with np.load(path) as z:
+        return z[gt_key].astype(np.float32), z["pred"].astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
