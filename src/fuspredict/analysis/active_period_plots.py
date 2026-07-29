@@ -16,6 +16,8 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .active_period import sigma_crossings as _sigma_crossings
+
 matplotlib.use("Agg")
 
 plt.rcParams.update(
@@ -173,27 +175,6 @@ def _rolling_mean(arr: np.ndarray, k: int = 10) -> np.ndarray:
         out[i] = np.nanmean(arr[max(0, i - k + 1) : i + 1])
     return out
 
-
-def _first_sustained_crossing(signal: np.ndarray, threshold: float, n_consec: int = 2) -> int | None:
-    above = signal > threshold
-    for i in range(len(above) - n_consec + 1):
-        if above[i : i + n_consec].all():
-            return i
-    return None
-
-
-def _sigma_crossings_pct(
-    signal: np.ndarray,
-    baseline_mean: float,
-    baseline_std: float,
-    fps: float,
-    n_consec: int = 2,
-) -> dict[int, float | None]:
-    results: dict[int, float | None] = {}
-    for n in (1, 2, 3):
-        idx = _first_sustained_crossing(signal, baseline_mean + n * baseline_std, n_consec)
-        results[n] = idx / fps if idx is not None else None
-    return results
 
 
 def _roi_wavg(
@@ -398,7 +379,7 @@ def fig_transition_analysis(
                 resid_cl_roi[t] = _roi_wavg(diff_cl, w_flat)
 
     # ── σ crossings ──────────────────────────────────────────────────────────
-    crossings_gt = _sigma_crossings_pct(
+    crossings_gt = _sigma_crossings(
         roi_signal_full[onset:], bl_mean_pct, bl_std_pct, fps
     )
 
@@ -409,7 +390,7 @@ def fig_transition_analysis(
     rm_bl_vals = resid_rm_roi[pre_in_window]
     rm_bl_vals = rm_bl_vals[~np.isnan(rm_bl_vals)]
     if len(rm_bl_vals) > 1:
-        crossings_rm = _sigma_crossings_pct(
+        crossings_rm = _sigma_crossings(
             _rolling_mean(resid_rm_roi)[onset:],
             float(rm_bl_vals.mean()), float(rm_bl_vals.std()), fps,
         )
@@ -419,7 +400,7 @@ def fig_transition_analysis(
     cl_bl_vals = resid_cl_roi[pre_in_window]
     cl_bl_vals = cl_bl_vals[~np.isnan(cl_bl_vals)]
     if model is not None and len(cl_bl_vals) > 1:
-        crossings_cl = _sigma_crossings_pct(
+        crossings_cl = _sigma_crossings(
             _rolling_mean(resid_cl_roi)[onset:],
             float(cl_bl_vals.mean()), float(cl_bl_vals.std()), fps,
         )
