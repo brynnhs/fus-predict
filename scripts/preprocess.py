@@ -29,6 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 
+from fuspredict.preprocessing.filters import filter_reoriented_sessions
 from fuspredict.preprocessing.geometry import reorient_baseline_sessions
 from fuspredict.preprocessing.io_mouse import (
     process_all_baseline_files_mouse,
@@ -132,6 +133,7 @@ def main() -> None:
 
     base_cfg   = config["preprocessing"]["baseline"]
     geo_cfg    = config["preprocessing"]["geometry"]
+    filt_cfg   = config["preprocessing"]["filtering"]
     std_cfg    = config["preprocessing"]["standardization"]
     tissue_cfg = config["preprocessing"]["tissue_segmentation"]
 
@@ -246,6 +248,51 @@ def main() -> None:
             )
             task_reoriented_paths = list_nc(task_reoriented_dir)
             print(f"  Active reoriented: {len(task_reoriented_paths)} sessions")
+
+        # ---------------------------------------------------------------
+        # Stage 2c — Optional temporal filtering (baseline + active)
+        # ---------------------------------------------------------------
+        filtering_enabled = (
+            filt_cfg["enable_lowpass"] or filt_cfg["enable_highpass"] or filt_cfg["enable_clip"]
+        )
+        if filtering_enabled and run_baseline:
+            baseline_filtered_dir = subj_deriv / f"baseline_only_filtered{dir_suffix}"
+            filter_reoriented_sessions(
+                baseline_reoriented_paths,
+                baseline_filtered_dir,
+                enable_lowpass=filt_cfg["enable_lowpass"],
+                lowpass_cutoff_hz=filt_cfg["lowpass_cutoff_hz"],
+                lowpass_order=filt_cfg["lowpass_order"],
+                enable_highpass=filt_cfg["enable_highpass"],
+                highpass_cutoff_hz=filt_cfg["highpass_cutoff_hz"],
+                highpass_order=filt_cfg["highpass_order"],
+                enable_clip=filt_cfg["enable_clip"],
+                clip_bottom=filt_cfg["clip_bottom"],
+                clip_top=filt_cfg["clip_top"],
+                fps_fallback=filt_cfg.get("fps_fallback"),
+                overwrite=filt_cfg["overwrite"],
+            )
+            baseline_reoriented_paths = list_nc(baseline_filtered_dir)
+            print(f"  Baseline filtered: {len(baseline_reoriented_paths)} sessions")
+        if filtering_enabled and task_reoriented_paths:
+            task_filtered_dir = subj_deriv / f"task_only_filtered{dir_suffix}"
+            filter_reoriented_sessions(
+                task_reoriented_paths,
+                task_filtered_dir,
+                enable_lowpass=filt_cfg["enable_lowpass"],
+                lowpass_cutoff_hz=filt_cfg["lowpass_cutoff_hz"],
+                lowpass_order=filt_cfg["lowpass_order"],
+                enable_highpass=filt_cfg["enable_highpass"],
+                highpass_cutoff_hz=filt_cfg["highpass_cutoff_hz"],
+                highpass_order=filt_cfg["highpass_order"],
+                enable_clip=filt_cfg["enable_clip"],
+                clip_bottom=filt_cfg["clip_bottom"],
+                clip_top=filt_cfg["clip_top"],
+                fps_fallback=filt_cfg.get("fps_fallback"),
+                overwrite=filt_cfg["overwrite"],
+            )
+            task_reoriented_paths = list_nc(task_filtered_dir)
+            print(f"  Active filtered: {len(task_reoriented_paths)} sessions")
 
         # ---------------------------------------------------------------
         # Stage 3 — Standardize (baseline)

@@ -45,7 +45,7 @@ preprocessing:
       mouse: []
 
   filtering:
-    enable_lowpass:     true
+    enable_lowpass:     false
     lowpass_cutoff_hz:  0.5
     lowpass_order:      4
     enable_highpass:    false
